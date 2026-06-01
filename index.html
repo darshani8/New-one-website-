@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Enchanted Tome — A Cinematic 3D Storybook</title>
+<style>
+  :root { --gold: #e8c878; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #05060a; }
+  body { font-family: "Georgia", "Times New Roman", serif; color: #f3e9d2; }
+  #app { position: fixed; inset: 0; }
+  canvas { display: block; }
+
+  /* ---- Loading screen ---- */
+  #loader {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 40%, #15110b 0%, #05060a 70%);
+    transition: opacity 1.1s ease;
+  }
+  #loader.hidden { opacity: 0; pointer-events: none; }
+  #loader .title {
+    font-size: clamp(22px, 4vw, 40px); letter-spacing: 0.18em;
+    color: var(--gold); text-shadow: 0 0 22px rgba(232,200,120,0.45);
+  }
+  #loader .sub { margin-top: 14px; font-size: 13px; letter-spacing: 0.32em; opacity: 0.6; text-transform: uppercase; }
+  .bar { margin-top: 26px; width: 220px; height: 2px; background: rgba(232,200,120,0.18); overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0%; background: var(--gold); box-shadow: 0 0 12px var(--gold); transition: width .3s ease; }
+
+  /* ---- Cinematic letterbox + vignette overlay ---- */
+  .bars { position: fixed; left: 0; right: 0; height: 9vh; background: #000; z-index: 20; pointer-events: none; transition: height .9s ease; }
+  .bars.top { top: 0; } .bars.bottom { bottom: 0; }
+  body.interactive .bars { height: 0; }
+
+  /* ---- UI ---- */
+  #ui {
+    position: fixed; left: 0; right: 0; bottom: 26px; z-index: 30;
+    display: flex; gap: 14px; justify-content: center; align-items: center;
+    opacity: 0; transition: opacity 1s ease .3s; pointer-events: none;
+  }
+  body.interactive #ui { opacity: 1; pointer-events: auto; }
+  .btn {
+    font-family: inherit; font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--gold); background: rgba(20,16,10,0.55); border: 1px solid rgba(232,200,120,0.35);
+    padding: 11px 20px; border-radius: 2px; cursor: pointer; backdrop-filter: blur(6px);
+    transition: all .25s ease;
+  }
+  .btn:hover { background: rgba(232,200,120,0.14); box-shadow: 0 0 20px rgba(232,200,120,0.25); border-color: var(--gold); }
+  .hint {
+    position: fixed; top: calc(9vh + 18px); left: 50%; transform: translateX(-50%); z-index: 30;
+    font-size: 12px; letter-spacing: 0.28em; text-transform: uppercase; opacity: 0; color: #d9cba7;
+    transition: opacity 1s ease; pointer-events: none;
+  }
+  body.interactive .hint { opacity: 0.55; }
+  #err {
+    position: fixed; inset: 0; z-index: 99; display: none; align-items: center; justify-content: center;
+    padding: 40px; text-align: center; background: #05060a; color: #f3e9d2; font-size: 15px; line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div class="bars top"></div>
+  <div class="bars bottom"></div>
+  <div class="hint">drag to orbit · scroll to zoom</div>
+
+  <div id="ui">
+    <button class="btn" id="turnBtn">Turn the Page</button>
+    <button class="btn" id="replayBtn">Replay Intro</button>
+  </div>
+
+  <div id="loader">
+    <div class="title">The Enchanted Tome</div>
+    <div class="sub">Opening the book…</div>
+    <div class="bar"><i id="barFill"></i></div>
+  </div>
+
+  <div id="err"></div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+      "gsap": "https://cdn.jsdelivr.net/npm/gsap@3.13.0/index.js"
+    }
+  }
+  </script>
+
+  <script type="module">
+  import * as THREE from 'three';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+  import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+  import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
+  import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+  import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+  import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+  import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+  import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+  import gsap from 'gsap';
+
+  // ===================================================================
+  //  CONFIG  — swap procedural assets for real Poly Haven / ambientCG
+  //            maps here later without touching the rest of the code.
+  // ===================================================================
+  const CFG = {
+    book: { W: 2.6, H: 3.6, coverT: 0.13, pagesT: 0.46 },
+    pages: 5,                 // number of turnable pages
+    turnAngle: Math.PI * 0.92,
+    coverOpenAngle: Math.PI * 0.95,
+    bloom: { strength: 0.85, radius: 0.6, threshold: 0.85 },
+    exposure: 1.05,
+  };
+
+  // -------------------------------------------------------------------
+  //  Boot
+  // -------------------------------------------------------------------
+  let renderer, scene, camera, controls, composer, gradePass;
+  const clock = new THREE.Clock();
+  const updaters = [];                 // per-frame callbacks
+  const state = { coverOpen: 0, titleGlow: 0 };
+  let introTimeline = null;
+
+  try {
+    init();
+    animate();
+  } catch (e) {
+    showError(e);
+  }
+
+  function init() {
+    const app = document.getElementById('app');
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // ACES Filmic = the cinematic, never-clipping "movie" curve. OutputPass
+    // reads this and applies it (plus sRGB) as the final composite step.
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = CFG.exposure;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    app.appendChild(renderer.domElement);
+
+    scene = new THREE.Scene();
+    scene.background = makeGradientBackground();
+    // Warm exponential haze so the dark background falls away and the book pops.
+    scene.fog = new THREE.FogExp2(0x0a0806, 0.045);
+
+    camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 100);
+    camera.position.set(7.5, 5.2, 9.5);
+    camera.lookAt(0, 0, 0);
+
+    // Image-based lighting: procedural RoomEnvironment gives soft, realistic
+    // reflections + ambient on the leather. (Drop an .hdr here for photoreal.)
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+    RectAreaLightUniformsLib.init();
+
+    buildLights();
+    const table = buildTable();
+    scene.add(table);
+
+    const book = buildBook();
+    book.rotation.x = -0.13;             // tilt back slightly, as if on a stand
+    scene.add(book);
+
+    buildGodRay(book);
+    buildSparkles(book);
+
+    setupControls();
+    setupPostProcessing();
+    setupUI();
+
+    addEventListener('resize', onResize);
+
+    finishLoading(() => startIntro(book));
+  }
+
+  // -------------------------------------------------------------------
+  //  Lighting — warm three-point + a soft RectAreaLight "window"
+  // -------------------------------------------------------------------
+  function buildLights() {
+    scene.add(new THREE.HemisphereLight(0x4b3a26, 0x070707, 0.25));
+
+    // Warm key (the candle / shaft of light) — the only shadow caster.
+    const key = new THREE.DirectionalLight(0xffd9a0, 2.6);
+    key.position.set(-4.5, 7.5, 4.5);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.camera.near = 1; key.shadow.camera.far = 25;
+    key.shadow.camera.left = -6; key.shadow.camera.right = 6;
+    key.shadow.camera.top = 6; key.shadow.camera.bottom = -6;
+    key.shadow.bias = -0.0004;
+    key.shadow.radius = 5;
+    scene.add(key);
+
+    // Cool rim from behind to separate the book from the dark.
+    const rim = new THREE.DirectionalLight(0x8fb6ff, 0.8);
+    rim.position.set(3, 3, -6);
+    scene.add(rim);
+
+    // Soft broad highlight that makes leather + gilt read as real.
+    const area = new THREE.RectAreaLight(0xfff0d0, 4.5, 5, 6);
+    area.position.set(-5, 4, 5);
+    area.lookAt(0, 0, 0);
+    scene.add(area);
+  }
+
+  function buildTable() {
+    const geo = new THREE.PlaneGeometry(60, 60);
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x1a140d, roughness: 0.82, metalness: 0.1,
+    });
+    const m = new THREE.Mesh(geo, mat);
+    m.rotation.x = -Math.PI / 2;
+    m.position.y = -CFG.book.H / 2 - 0.02;
+    m.receiveShadow = true;
+    return m;
+  }
+
+  // -------------------------------------------------------------------
+  //  The book — leather covers + spine + a skinned-mesh page rig
+  // -------------------------------------------------------------------
+  let coverPivot;            // front cover hinge group
+  const pageRig = [];        // { pivot, bones, turned, baseZ }
+  let titleMat;              // glowing-title material
+  let currentPage = 0;
+
+  function buildBook() {
+    const { W, H, coverT, pagesT } = CFG.book;
+    const group = new THREE.Group();
+
+    // --- Materials -------------------------------------------------
+    const leather = makeLeatherMaterial();
+    const paperTex = makePaperTexture();
+    const paperMat = new THREE.MeshStandardMaterial({
+      map: paperTex, roughness: 0.95, metalness: 0.0, side: THREE.DoubleSide,
+    });
+
+    const halfPB = pagesT / 2;
+    const coverFaceZ = halfPB + coverT / 2;
+
+    // --- Back cover -----------------------------------------------
+    const back = new THREE.Mesh(new THREE.BoxGeometry(W, H, coverT), leather);
+    back.position.z = -coverFaceZ;
+    back.castShadow = back.receiveShadow = true;
+    group.add(back);
+
+    // --- Page block (closed stack) --------------------------------
+    const block = new THREE.Mesh(
+      new THREE.BoxGeometry(W * 0.97, H * 0.97, pagesT),
+      new THREE.MeshStandardMaterial({ color: 0xe9dcc0, roughness: 0.95 })
+    );
+    block.castShadow = block.receiveShadow = true;
+    group.add(block);
+
+    // --- Titled top page (revealed when the book opens) -----------
+    titleMat = makeTitleMaterial(paperTex);
+    const topPage = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.95, H * 0.95), titleMat);
+    topPage.position.z = halfPB + 0.001;
+    group.add(topPage);
+
+    // --- Spine (wraps the left/hinge edge) ------------------------
+    const spine = new THREE.Mesh(
+      new THREE.BoxGeometry(coverT * 1.4, H, pagesT + coverT * 2), leather
+    );
+    spine.position.x = -W / 2 - coverT * 0.2;
+    spine.castShadow = spine.receiveShadow = true;
+    group.add(spine);
+
+    // Raised spine bands — modelled geometry (catch real light on a 360 orbit).
+    for (let i = -1; i <= 1; i++) {
+      const band = new THREE.Mesh(
+        new THREE.BoxGeometry(coverT * 1.7, 0.14, pagesT + coverT * 2.2), leather
+      );
+      band.position.set(-W / 2 - coverT * 0.2, i * (H * 0.26), 0);
+      band.castShadow = true;
+      group.add(band);
+    }
+
+    // --- Turnable pages (skinned meshes, hinged at the spine) ------
+    for (let i = 0; i < CFG.pages; i++) {
+      const baseZ = halfPB + 0.004 + i * 0.004;
+      const p = makeSkinnedPage(W * 0.95, H * 0.95, paperMat.clone());
+      p.pivot.position.set(-W / 2, 0, baseZ);
+      p.baseZ = baseZ;
+      p.turned = false;
+      group.add(p.pivot);
+      pageRig.push(p);
+    }
+
+    // --- Front cover (hinged at the spine, opens around Y) --------
+    coverPivot = new THREE.Group();
+    coverPivot.position.set(-W / 2, 0, coverFaceZ);
+    const front = new THREE.Mesh(new THREE.BoxGeometry(W, H, coverT), leather);
+    front.position.x = W / 2;            // extend to the right of the hinge
+    front.castShadow = front.receiveShadow = true;
+    coverPivot.add(front);
+
+    // Embossed gold title on the cover (emissive → feeds selective bloom).
+    const emblem = new THREE.Mesh(
+      new THREE.PlaneGeometry(W * 0.7, H * 0.7),
+      makeCoverEmblemMaterial()
+    );
+    emblem.position.set(W / 2, 0, coverT / 2 + 0.001);
+    coverPivot.add(emblem);
+    group.add(coverPivot);
+
+    return group;
+  }
+
+  // Subdivided plane + a bone chain along X, bent procedurally each frame.
+  // This is the production-proven page-turn rig (Wawa Sensei approach).
+  function makeSkinnedPage(w, h, material) {
+    const SEG = 20;
+    const geo = new THREE.PlaneGeometry(w, h, SEG, 1);
+    geo.translate(w / 2, 0, 0);          // move hinge to local x = 0
+
+    const seg = w / SEG;
+    const pos = geo.attributes.position;
+    const skinIndices = [];
+    const skinWeights = [];
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const f = x / seg;
+      const lower = Math.max(0, Math.min(SEG - 1, Math.floor(f)));
+      const upper = lower + 1;
+      const w1 = f - lower;
+      skinIndices.push(lower, upper, 0, 0);
+      skinWeights.push(1 - w1, w1, 0, 0);
+    }
+    geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
+    geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
+
+    const bones = [];
+    let prev = null;
+    for (let i = 0; i <= SEG; i++) {
+      const b = new THREE.Bone();
+      b.position.x = i === 0 ? 0 : seg;
+      if (prev) prev.add(b); else b.position.x = 0;
+      bones.push(b);
+      prev = b;
+    }
+
+    const mesh = new THREE.SkinnedMesh(geo, material);
+    mesh.castShadow = true;
+    mesh.add(bones[0]);
+    mesh.bind(new THREE.Skeleton(bones));
+
+    const pivot = new THREE.Group();
+    pivot.add(mesh);
+
+    return { pivot, mesh, bones };
+  }
+
+  // -------------------------------------------------------------------
+  //  Atmosphere: god-ray shaft + drifting dust sparkles
+  // -------------------------------------------------------------------
+  function buildGodRay(book) {
+    const h = 11;
+    const geo = new THREE.CylinderGeometry(0.15, 2.4, h, 40, 1, true);
+    geo.translate(0, -h / 2, 0);         // origin at the top (light source)
+    const mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      uniforms: { uColor: { value: new THREE.Color(0xffdca0) } },
+      vertexShader: `
+        varying vec2 vUv;
+        void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+      fragmentShader: `
+        varying vec2 vUv; uniform vec3 uColor;
+        void main(){
+          float edge = smoothstep(0.0, 0.5, vUv.x) * smoothstep(1.0, 0.5, vUv.x);
+          float fade = pow(1.0 - vUv.y, 1.6);          // brightest at the source
+          float a = edge * fade * 0.5;
+          gl_FragColor = vec4(uColor, a);
+        }`,
+    });
+    const cone = new THREE.Mesh(geo, mat);
+    cone.position.set(-3.6, 8.5, 3.6);
+    cone.lookAt(0, -1, 0);
+    cone.renderOrder = 2;
+    scene.add(cone);
+  }
+
+  function buildSparkles(book) {
+    const COUNT = 480;
+    const positions = new Float32Array(COUNT * 3);
+    const scales = new Float32Array(COUNT);
+    const seeds = new Float32Array(COUNT);
+    for (let i = 0; i < COUNT; i++) {
+      positions[i * 3 + 0] = (Math.random() - 0.5) * 9;
+      positions[i * 3 + 1] = (Math.random() - 0.5) * 8;
+      positions[i * 3 + 2] = (Math.random() - 0.5) * 7;
+      scales[i] = Math.random();
+      seeds[i] = Math.random() * 100;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('aScale', new THREE.BufferAttribute(scales, 1));
+    geo.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
+
+    const mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      uniforms: { uTime: { value: 0 }, uPixelRatio: { value: Math.min(devicePixelRatio, 2) } },
+      vertexShader: `
+        attribute float aScale; attribute float aSeed;
+        uniform float uTime; uniform float uPixelRatio;
+        varying float vTwinkle;
+        void main(){
+          vec3 p = position;
+          p.y += sin(uTime * 0.35 + aSeed) * 0.4;        // slow drift
+          p.x += cos(uTime * 0.22 + aSeed) * 0.3;
+          vec4 mv = modelViewMatrix * vec4(p, 1.0);
+          gl_Position = projectionMatrix * mv;
+          gl_PointSize = (12.0 * aScale + 3.0) * uPixelRatio / -mv.z;
+          vTwinkle = 0.5 + 0.5 * sin(uTime * 2.0 + aSeed * 3.0);
+        }`,
+      fragmentShader: `
+        varying float vTwinkle;
+        void main(){
+          float d = distance(gl_PointCoord, vec2(0.5));
+          if (d > 0.5) discard;
+          float a = smoothstep(0.5, 0.0, d) * vTwinkle;
+          // emissive warm gold > 1.0 so selective bloom picks it up
+          gl_FragColor = vec4(vec3(1.4, 1.1, 0.6), a);
+        }`,
+    });
+    const points = new THREE.Points(geo, mat);
+    scene.add(points);
+    updaters.push((t) => { mat.uniforms.uTime.value = t; });
+  }
+
+  // -------------------------------------------------------------------
+  //  Camera / controls
+  // -------------------------------------------------------------------
+  function setupControls() {
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.target.set(0, 0, 0);
+    controls.minDistance = 4.5;
+    controls.maxDistance = 16;
+    controls.maxPolarAngle = Math.PI * 0.52;   // can't go under the table
+    controls.minPolarAngle = Math.PI * 0.12;
+    controls.enabled = false;                  // locked during the intro
+    controls.autoRotate = false;
+    controls.autoRotateSpeed = 0.35;
+  }
+
+  // -------------------------------------------------------------------
+  //  Post-processing: RenderPass → Bloom → Grade(vignette/grain/CA) → Output
+  // -------------------------------------------------------------------
+  function setupPostProcessing() {
+    composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+
+    const bloom = new UnrealBloomPass(
+      new THREE.Vector2(innerWidth, innerHeight),
+      CFG.bloom.strength, CFG.bloom.radius, CFG.bloom.threshold
+    );
+    composer.addPass(bloom);
+
+    gradePass = new ShaderPass({
+      uniforms: {
+        tDiffuse: { value: null },
+        uTime: { value: 0 },
+        uVignette: { value: 1.05 },
+        uGrain: { value: 0.04 },
+        uCA: { value: 0.0016 },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+      fragmentShader: `
+        varying vec2 vUv;
+        uniform sampler2D tDiffuse;
+        uniform float uTime, uVignette, uGrain, uCA;
+        float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+        void main(){
+          vec2 dir = vUv - 0.5;
+          // subtle chromatic aberration, growing toward the edges
+          float r = texture2D(tDiffuse, vUv - dir * uCA).r;
+          float g = texture2D(tDiffuse, vUv).g;
+          float b = texture2D(tDiffuse, vUv + dir * uCA).b;
+          vec3 col = vec3(r, g, b);
+          // vignette to frame the book
+          float vig = 1.0 - dot(dir, dir) * uVignette;
+          col *= clamp(vig, 0.0, 1.0);
+          // filmic grain to break up banding
+          float grain = (hash(vUv * vec2(1920.0,1080.0) + uTime) - 0.5) * uGrain;
+          col += grain;
+          gl_FragColor = vec4(col, 1.0);
+        }`,
+    });
+    composer.addPass(gradePass);
+
+    composer.addPass(new OutputPass());    // ACES tone map + sRGB, last
+    updaters.push((t) => { gradePass.uniforms.uTime.value = t; });
+  }
+
+  // -------------------------------------------------------------------
+  //  Cinematic intro (GSAP)
+  // -------------------------------------------------------------------
+  function startIntro() {
+    controls.enabled = false;
+    document.body.classList.remove('interactive');
+    state.coverOpen = 0; state.titleGlow = 0;
+    pageRig.forEach((p) => { p.turned = false; });
+    currentPage = 0;
+
+    const camPos = { x: 7.5, y: 5.2, z: 9.5 };
+    camera.position.set(camPos.x, camPos.y, camPos.z);
+
+    if (introTimeline) introTimeline.kill();
+    introTimeline = gsap.timeline({
+      defaults: { ease: 'power2.inOut' },
+      onUpdate: () => camera.lookAt(0, 0, 0),
+      onComplete: () => {
+        controls.enabled = true;
+        controls.autoRotate = true;
+        document.body.classList.add('interactive');
+      },
+    });
+
+    // Beat 1: dolly in to the hero framing.
+    introTimeline.to(camPos, {
+      x: 0.6, y: 1.9, z: 6.4, duration: 2.6,
+      onUpdate: () => camera.position.set(camPos.x, camPos.y, camPos.z),
+    });
+    // Beat 2: the cover lifts open.
+    introTimeline.to(state, { coverOpen: 1, duration: 1.4, ease: 'power3.out' }, '-=0.6');
+    // Beat 3: the first page turns.
+    introTimeline.add(() => turnPage(), '-=0.3');
+    // Beat 4: the gold title glows to life.
+    introTimeline.to(state, { titleGlow: 1, duration: 1.2, ease: 'sine.inOut' }, '-=0.4');
+    // Beat 5: settle to a calm display angle.
+    introTimeline.to(camPos, {
+      x: 0.0, y: 1.4, z: 6.0, duration: 1.6, ease: 'power1.inOut',
+      onUpdate: () => camera.position.set(camPos.x, camPos.y, camPos.z),
+    }, '-=0.2');
+  }
+
+  function turnPage() {
+    if (currentPage >= pageRig.length) return;
+    const p = pageRig[currentPage];
+    p.turned = true;
+    currentPage++;
+  }
+
+  // -------------------------------------------------------------------
+  //  UI
+  // -------------------------------------------------------------------
+  function setupUI() {
+    document.getElementById('turnBtn').addEventListener('click', turnPage);
+    document.getElementById('replayBtn').addEventListener('click', () => startIntro());
+  }
+
+  // -------------------------------------------------------------------
+  //  Render loop
+  // -------------------------------------------------------------------
+  const damp = THREE.MathUtils.damp;
+  function animate() {
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), 0.05);
+    const t = clock.elapsedTime;
+
+    // Cover open (eased by GSAP via state.coverOpen)
+    if (coverPivot) coverPivot.rotation.y = -state.coverOpen * CFG.coverOpenAngle;
+
+    // Title glow → emissive intensity (selective bloom does the rest)
+    if (titleMat) titleMat.emissiveIntensity = state.titleGlow * 2.2;
+
+    // Page turns: damped easing of rotation + a procedural mid-turn curl.
+    for (const p of pageRig) {
+      const target = p.turned ? 1 : 0;
+      p._prog = damp(p._prog ?? 0, target, 6, dt);
+      p.pivot.rotation.y = -p._prog * CFG.turnAngle;
+      p.pivot.position.z = p.baseZ + Math.sin(p._prog * Math.PI) * 0.18; // lift to avoid z-fight
+      const curl = Math.sin(p._prog * Math.PI) * 0.12;                   // bow the page mid-turn
+      for (const b of p.bones) b.rotation.y = curl;
+    }
+
+    for (const fn of updaters) fn(t);
+
+    if (controls.enabled) controls.update();
+    composer.render();
+  }
+
+  function onResize() {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+    composer.setSize(innerWidth, innerHeight);
+  }
+
+  // ===================================================================
+  //  Procedural assets (value-noise FBM) — no external files required.
+  //  Replace these with real PBR maps / HDRIs for photoreal output.
+  // ===================================================================
+  function makeLeatherMaterial() {
+    const size = 512;
+    const height = fbmCanvas(size, (n, x, y) => {
+      const pores = fbm(x * 60, y * 60, 3);   // fine grain
+      return n * 0.7 + pores * 0.3;
+    });
+    const albedo = paintCanvas(size, (x, y, h) => {
+      const base = [0x46 / 255, 0x29 / 255, 0x16 / 255]; // deep oxblood-brown
+      const v = 0.55 + h * 0.6;
+      return [base[0] * v, base[1] * v, base[2] * v];
+    }, height);
+    const rough = paintCanvas(size, (x, y, h) => {
+      const r = 0.55 + (1 - h) * 0.35;          // crevices rougher
+      return [r, r, r];
+    }, height);
+    const normal = normalFromHeight(height, 2.2);
+
+    const albedoTex = canvasTexture(albedo, THREE.SRGBColorSpace, 2);
+    const roughTex = canvasTexture(rough, THREE.NoColorSpace, 2);
+    const normalTex = canvasTexture(normal, THREE.NoColorSpace, 2);
+
+    return new THREE.MeshPhysicalMaterial({
+      map: albedoTex,
+      normalMap: normalTex,
+      normalScale: new THREE.Vector2(0.8, 0.8),
+      roughnessMap: roughTex,
+      roughness: 1.0, metalness: 0.0,
+      clearcoat: 0.28, clearcoatRoughness: 0.6,   // waxed/oiled sheen
+      envMapIntensity: 1.0,
+    });
+  }
+
+  function makePaperTexture() {
+    const size = 512;
+    const c = document.createElement('canvas'); c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#efe6cf'; ctx.fillRect(0, 0, size, size);
+    // faint fibres
+    for (let i = 0; i < 4000; i++) {
+      const x = Math.random() * size, y = Math.random() * size;
+      ctx.fillStyle = `rgba(${150 + Math.random() * 60 | 0},${130 + Math.random() * 50 | 0},${95 + Math.random() * 40 | 0},0.05)`;
+      ctx.fillRect(x, y, 1.5, 1.5);
+    }
+    // aged edges
+    const g = ctx.createRadialGradient(size / 2, size / 2, size * 0.3, size / 2, size / 2, size * 0.72);
+    g.addColorStop(0, 'rgba(120,90,50,0)');
+    g.addColorStop(1, 'rgba(90,60,30,0.35)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, size, size);
+    return canvasTexture(c, THREE.SRGBColorSpace, 1);
+  }
+
+  function makeTitleMaterial(paperTex) {
+    const size = 1024;
+    const c = document.createElement('canvas'); c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, size, size);
+    ctx.fillStyle = '#e8c878';
+    ctx.shadowColor = '#ffe8b0'; ctx.shadowBlur = 24;
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 70px Georgia';
+    ctx.fillText('The', size / 2, size * 0.30);
+    ctx.font = 'bold 96px Georgia';
+    ctx.fillText('Enchanted', size / 2, size * 0.42);
+    ctx.fillText('Tome', size / 2, size * 0.54);
+    // a divider flourish
+    ctx.shadowBlur = 14;
+    ctx.fillRect(size * 0.3, size * 0.60, size * 0.4, 3);
+    ctx.font = 'italic 34px Georgia';
+    ctx.fillText('· chapter one ·', size / 2, size * 0.70);
+    const emissive = canvasTexture(c, THREE.SRGBColorSpace, 1);
+
+    return new THREE.MeshStandardMaterial({
+      map: paperTex,
+      emissive: 0xffffff,
+      emissiveMap: emissive,
+      emissiveIntensity: 0.0,        // animated up during the intro
+      roughness: 0.95, metalness: 0.0,
+      side: THREE.DoubleSide,
+    });
+  }
+
+  function makeCoverEmblemMaterial() {
+    const size = 1024;
+    const c = document.createElement('canvas'); c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, size, size);
+    ctx.strokeStyle = '#caa75e'; ctx.fillStyle = '#caa75e';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(size * 0.1, size * 0.1, size * 0.8, size * 0.8);
+    ctx.lineWidth = 2;
+    ctx.strokeRect(size * 0.13, size * 0.13, size * 0.74, size * 0.74);
+    // a simple sun/star sigil
+    ctx.save();
+    ctx.translate(size / 2, size * 0.42);
+    ctx.beginPath();
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      const rr = i % 2 ? 60 : 120;
+      ctx[i ? 'lineTo' : 'moveTo'](Math.cos(a) * rr, Math.sin(a) * rr);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 64px Georgia';
+    ctx.fillText('THE ENCHANTED TOME', size / 2, size * 0.78);
+    const tex = canvasTexture(c, THREE.SRGBColorSpace, 1);
+
+    return new THREE.MeshStandardMaterial({
+      transparent: true, map: tex,
+      emissive: 0xffcf7a, emissiveMap: tex, emissiveIntensity: 0.6,
+      roughness: 0.4, metalness: 0.8,
+    });
+  }
+
+  // ---- noise helpers ----
+  function hash2(x, y) {
+    const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+    return n - Math.floor(n);
+  }
+  function vnoise(x, y) {
+    const xi = Math.floor(x), yi = Math.floor(y);
+    const xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const a = hash2(xi, yi), b = hash2(xi + 1, yi);
+    const c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
+    return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
+  }
+  function fbm(x, y, oct = 4) {
+    let s = 0, amp = 0.5, f = 1;
+    for (let i = 0; i < oct; i++) { s += amp * vnoise(x * f, y * f); f *= 2; amp *= 0.5; }
+    return s;
+  }
+  function fbmCanvas(size, fn) {
+    const c = document.createElement('canvas'); c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(size, size);
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      const n = fbm(x / size * 8, y / size * 8, 5);
+      const v = Math.max(0, Math.min(1, fn(n, x / size, y / size))) * 255;
+      const i = (y * size + x) * 4;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    return c;
+  }
+  function paintCanvas(size, fn, heightCanvas) {
+    const hctx = heightCanvas.getContext('2d');
+    const hdata = hctx.getImageData(0, 0, size, size).data;
+    const c = document.createElement('canvas'); c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(size, size);
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4;
+      const h = hdata[i] / 255;
+      const rgb = fn(x / size, y / size, h);
+      img.data[i] = rgb[0] * 255; img.data[i + 1] = rgb[1] * 255; img.data[i + 2] = rgb[2] * 255; img.data[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    return c;
+  }
+  function normalFromHeight(heightCanvas, strength) {
+    const size = heightCanvas.width;
+    const hctx = heightCanvas.getContext('2d');
+    const h = hctx.getImageData(0, 0, size, size).data;
+    const get = (x, y) => h[((((y + size) % size) * size + ((x + size) % size)) * 4)] / 255;
+    const c = document.createElement('canvas'); c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(size, size);
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      const dx = (get(x - 1, y) - get(x + 1, y)) * strength;
+      const dy = (get(x, y - 1) - get(x, y + 1)) * strength;
+      const nz = 1.0;
+      const len = Math.hypot(dx, dy, nz);
+      const i = (y * size + x) * 4;
+      img.data[i] = (dx / len * 0.5 + 0.5) * 255;
+      img.data[i + 1] = (dy / len * 0.5 + 0.5) * 255;
+      img.data[i + 2] = (nz / len * 0.5 + 0.5) * 255;
+      img.data[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    return c;
+  }
+  function canvasTexture(canvas, colorSpace, repeat = 1) {
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = colorSpace;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(repeat, repeat);
+    tex.anisotropy = 8;
+    return tex;
+  }
+  function makeGradientBackground() {
+    const c = document.createElement('canvas'); c.width = 16; c.height = 256;
+    const ctx = c.getContext('2d');
+    const g = ctx.createLinearGradient(0, 0, 0, 256);
+    g.addColorStop(0, '#16110b');
+    g.addColorStop(0.5, '#0a0807');
+    g.addColorStop(1, '#040405');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, 16, 256);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  // -------------------------------------------------------------------
+  //  Loading + error UI
+  // -------------------------------------------------------------------
+  function finishLoading(then) {
+    const fill = document.getElementById('barFill');
+    let p = 0;
+    const iv = setInterval(() => {
+      p = Math.min(100, p + 12 + Math.random() * 18);
+      fill.style.width = p + '%';
+      if (p >= 100) {
+        clearInterval(iv);
+        setTimeout(() => {
+          document.getElementById('loader').classList.add('hidden');
+          then();
+        }, 350);
+      }
+    }, 120);
+  }
+  function showError(e) {
+    console.error(e);
+    const el = document.getElementById('err');
+    el.style.display = 'flex';
+    el.innerHTML = `<div><p style="color:#e8c878;font-size:20px;margin-bottom:14px;">Could not open the book</p>
+      <p>${(e && e.message) || e}</p>
+      <p style="opacity:.5;margin-top:18px;font-size:13px;">This demo loads three.js & GSAP from a CDN — an internet connection is required.</p></div>`;
+  }
+  </script>
+</body>
+</html>
