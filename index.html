@@ -123,13 +123,6 @@
   const state = { coverOpen: 0, titleGlow: 0 };
   let introTimeline = null;
 
-  try {
-    init();
-    animate();
-  } catch (e) {
-    showError(e);
-  }
-
   function init() {
     const app = document.getElementById('app');
 
@@ -831,6 +824,14 @@
     el.innerHTML = `<div><p style="color:#e8c878;font-size:20px;margin-bottom:14px;">Could not open the book</p>
       <p>${(e && e.message) || e}</p>
       <p style="opacity:.5;margin-top:18px;font-size:13px;">This demo loads three.js & GSAP from a CDN — an internet connection is required.</p></div>`;
+  }
+
+  // ---- Boot last, so every `let`/`const` above is initialized first ----
+  try {
+    init();
+    animate();
+  } catch (e) {
+    showError(e);
   }
   </script>
 </body>
