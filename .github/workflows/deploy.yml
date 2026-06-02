@@ -1,5 +1,5 @@
-# Deploys the static site (index.html) to GitHub Pages on every push to main.
-# No build step — the repo root is uploaded as-is.
+# Builds the Vite + React app and deploys the dist/ to GitHub Pages
+# on every push to main.
 name: Deploy to GitHub Pages
 
 on:
@@ -12,29 +12,44 @@ permissions:
   pages: write
   id-token: write
 
-# One deploy at a time; let an in-progress run finish.
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
       - name: Configure Pages
-        uses: actions/configure-pages@v5   # auto-enables Pages for the repo
+        uses: actions/configure-pages@v5
 
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .                          # serve the repo root
+          path: dist            # Vite build output
 
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
