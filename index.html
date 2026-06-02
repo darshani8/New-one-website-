@@ -4,79 +4,229 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>The Enchanted Tome — A Cinematic 3D Storybook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Cinzel:wght@400;500;600;700&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet" />
 <style>
-  :root { --gold: #e8c878; }
+  :root {
+    --gold: #c9a84c;
+    --gold-bright: #e8c97a;
+    --ink: #f3e9d2;
+    --bg: #05060a;
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #05060a; }
-  body { font-family: "Georgia", "Times New Roman", serif; color: #f3e9d2; }
-  #app { position: fixed; inset: 0; }
-  canvas { display: block; }
+  html { scroll-behavior: auto; }
+  body { background: var(--bg); color: var(--ink); font-family: 'IM Fell English', serif; overflow-x: hidden; }
+  a { color: inherit; text-decoration: none; }
 
-  /* ---- Loading screen ---- */
-  #loader {
-    position: fixed; inset: 0; z-index: 50;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    background: radial-gradient(circle at 50% 40%, #15110b 0%, #05060a 70%);
-    transition: opacity 1.1s ease;
-  }
+  /* ── Fixed 3D backdrop ── */
+  #bg { position: fixed; inset: 0; z-index: 0; }
+  #bg canvas { display: block; }
+
+  /* ── Fixed cinematic overlays ── */
+  .overlay { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  .vignette { background: radial-gradient(ellipse at center, transparent 38%, rgba(0,0,0,0.78) 100%); transition: opacity .4s; }
+  .grain { opacity: .055; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+  /* corner ornaments */
+  .corner { position: fixed; width: 64px; height: 64px; z-index: 6; pointer-events: none; opacity: .8; }
+  .corner svg { width: 100%; height: 100%; }
+  .corner.tl { top: 18px; left: 18px; }
+  .corner.tr { top: 18px; right: 18px; transform: scaleX(-1); }
+  .corner.bl { bottom: 18px; left: 18px; transform: scaleY(-1); }
+  .corner.br { bottom: 18px; right: 18px; transform: scale(-1,-1); }
+
+  /* ── Nav ── */
+  nav { position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 22px 70px; pointer-events: none; }
+  .nav-logo { font-family: 'Cinzel Decorative', serif; font-weight: 700; letter-spacing: .18em;
+    color: var(--gold-bright); font-size: 17px; text-shadow: 0 0 18px rgba(201,168,76,.4); pointer-events: auto; }
+  .nav-links { display: flex; gap: 34px; list-style: none; pointer-events: auto; }
+  .nav-links a { font-family: 'Cinzel', serif; font-size: 12px; letter-spacing: .22em; text-transform: uppercase;
+    color: #cdbf9d; opacity: .8; transition: color .25s, opacity .25s; }
+  .nav-links a:hover { color: var(--gold-bright); opacity: 1; }
+
+  /* ── Hero UI (fixed, fades out before section 2) ── */
+  .hero-ui { position: fixed; inset: 0; z-index: 8; pointer-events: none; transition: opacity .6s ease; }
+  .hero-content { position: absolute; top: 50%; left: 9%; transform: translateY(-50%);
+    max-width: 620px; }
+  .sigil { display: block; font-size: 46px; color: var(--gold); filter: drop-shadow(0 0 14px rgba(201,168,76,.6)); margin-bottom: 12px; }
+  .divider { display: flex; align-items: center; gap: 14px; margin: 14px 0 18px; max-width: 260px; }
+  .divider .line { height: 1px; flex: 1; background: linear-gradient(90deg, transparent, var(--gold)); }
+  .divider .line.right { background: linear-gradient(90deg, var(--gold), transparent); }
+  .divider .diamond { width: 7px; height: 7px; background: var(--gold); transform: rotate(45deg); box-shadow: 0 0 10px var(--gold); }
+  .subtitle { font-family: 'Cinzel', serif; font-size: 13px; letter-spacing: .42em; text-transform: uppercase; color: var(--gold-bright); }
+  .title { font-family: 'Cinzel Decorative', serif; font-weight: 900; font-size: clamp(34px, 5vw, 68px);
+    line-height: 1.05; margin: 14px 0 20px; color: #fff; text-shadow: 0 4px 40px rgba(0,0,0,.6); }
+  .body { font-size: clamp(16px, 1.4vw, 20px); line-height: 1.7; color: #d9cba7; max-width: 520px; }
+  .cta-row { display: flex; gap: 16px; margin-top: 30px; pointer-events: auto; }
+  .btn { font-family: 'Cinzel', serif; font-size: 12px; letter-spacing: .18em; text-transform: uppercase;
+    padding: 13px 26px; cursor: pointer; transition: all .25s; border: 1px solid var(--gold); }
+  .btn-solid { background: var(--gold); color: #1a1206; }
+  .btn-solid:hover { background: var(--gold-bright); box-shadow: 0 0 26px rgba(201,168,76,.5); }
+  .btn-ghost { background: transparent; color: var(--gold-bright); border-color: rgba(201,168,76,.4); }
+  .btn-ghost:hover { border-color: var(--gold); background: rgba(201,168,76,.1); }
+
+  /* right panel: chapter label + dots */
+  .right-panel { position: absolute; top: 50%; right: 56px; transform: translateY(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .chapter-label { font-family: 'Cinzel', serif; font-size: 12px; letter-spacing: .2em; color: var(--gold-bright); }
+  .vert-line { width: 1px; height: 60px; background: linear-gradient(var(--gold), transparent); }
+  .dots { display: flex; flex-direction: column; gap: 14px; }
+  .dot { width: 9px; height: 9px; border: 1px solid var(--gold); transform: rotate(45deg); transition: all .35s; }
+  .dot.active { background: var(--gold); box-shadow: 0 0 12px var(--gold); transform: rotate(45deg) scale(1.25); }
+
+  /* rune tick bar (bottom) */
+  .rune-bar { position: absolute; bottom: 64px; left: 9%; right: 56px; height: 26px;
+    display: flex; align-items: flex-end; gap: 3px; }
+  .rune-tick { flex: 1; background: var(--gold); opacity: .25; height: 30%; transform-origin: bottom; }
+  .rune-tick:nth-child(5n) { height: 90%; opacity: .5; }
+
+  /* scroll hint */
+  .scroll-hint { position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 8px; opacity: .6; }
+  .scroll-hint span { font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: .3em; text-transform: uppercase; }
+  .scroll-hint .arrow { width: 1px; height: 32px; background: var(--gold); animation: drop 1.8s infinite; }
+  @keyframes drop { 0%{transform:scaleY(0);transform-origin:top} 50%{transform:scaleY(1);transform-origin:top} 51%{transform-origin:bottom} 100%{transform:scaleY(0);transform-origin:bottom} }
+
+  /* progress bar */
+  .progress-wrap { position: fixed; bottom: 0; left: 0; right: 0; height: 3px; background: rgba(201,168,76,.12); z-index: 9; }
+  .progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--gold), var(--gold-bright)); box-shadow: 0 0 12px var(--gold); }
+
+  /* ── Scroll runway (drives the story) ── */
+  .story { position: relative; height: 600vh; z-index: 1; }
+
+  /* ── Section 2: Chapters card grid ── */
+  .chapters { position: relative; z-index: 4; background:
+      linear-gradient(180deg, rgba(5,6,10,.5) 0%, #07070b 18%, #07070b 100%); padding: 120px 6vw 90px; }
+  .sec-head { text-align: center; margin-bottom: 70px; }
+  .eyebrow { font-family: 'Cinzel', serif; font-size: 13px; letter-spacing: .42em; text-transform: uppercase; color: var(--gold); }
+  .head-orn { display: flex; align-items: center; justify-content: center; gap: 16px; margin: 18px 0; }
+  .head-orn .line { height: 1px; width: 90px; background: linear-gradient(90deg, transparent, var(--gold)); }
+  .head-orn .line:last-child { background: linear-gradient(90deg, var(--gold), transparent); }
+  .head-orn .rune { color: var(--gold-bright); font-size: 18px; }
+  .sec-title { font-family: 'Cinzel Decorative', serif; font-weight: 900; font-size: clamp(34px, 5vw, 60px); line-height: 1.1; color: #fff; }
+  .sec-title em { color: var(--gold-bright); font-style: italic; }
+  .sec-sub { margin-top: 16px; color: #b3a988; font-size: 17px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 26px; max-width: 1240px; margin: 0 auto; }
+  .card { position: relative; min-height: 400px; padding: 38px 30px; border: 1px solid var(--border, #4a4630);
+    overflow: hidden; cursor: pointer; opacity: 0; transform: translateY(40px);
+    transition: opacity .8s ease, transform .8s ease, box-shadow .4s; }
+  .card.visible { opacity: 1; transform: translateY(0); }
+  .card:hover { box-shadow: 0 0 40px rgba(0,0,0,.6), inset 0 0 60px rgba(201,168,76,.06); border-color: var(--accent); }
+  .card .c-corner { position: absolute; width: 16px; height: 16px; border: 1px solid var(--accent); opacity: .6; }
+  .c-corner.tl { top: 10px; left: 10px; border-right: 0; border-bottom: 0; }
+  .c-corner.tr { top: 10px; right: 10px; border-left: 0; border-bottom: 0; }
+  .c-corner.bl { bottom: 10px; left: 10px; border-right: 0; border-top: 0; }
+  .c-corner.br { bottom: 10px; right: 10px; border-left: 0; border-top: 0; }
+  .c-sigil { font-size: 64px; text-align: center; filter: drop-shadow(0 0 16px var(--accent));
+    transition: transform .25s ease; transform-style: preserve-3d; }
+  .c-region { text-align: center; font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: .3em; text-transform: uppercase; color: var(--accent); margin: 18px 0 8px; }
+  .c-name { text-align: center; font-family: 'Cinzel Decorative', serif; font-weight: 700; font-size: 24px; color: #fff; line-height: 1.2; }
+  .c-words { text-align: center; font-style: italic; color: var(--gold-bright); margin-top: 10px; }
+  .c-desc { color: #c4b48f; font-size: 15px; line-height: 1.65; margin-top: 16px; opacity: 0; max-height: 0; transition: opacity .4s, max-height .4s; }
+  .card:hover .c-desc { opacity: 1; max-height: 240px; }
+  .c-bar { position: absolute; left: 0; bottom: 0; height: 3px; width: 0; background: var(--accent); transition: width .5s; }
+  .card:hover .c-bar { width: 100%; }
+
+  footer { position: relative; z-index: 4; background: #07070b; text-align: center; padding: 50px 20px 70px; }
+  .foot-orn { display: flex; align-items: center; justify-content: center; gap: 18px; color: var(--gold); margin-bottom: 20px; }
+  .foot-orn .line { height: 1px; width: 120px; background: linear-gradient(90deg, transparent, var(--gold)); }
+  .foot-orn .line:last-child { background: linear-gradient(90deg, var(--gold), transparent); }
+  footer p { color: #8a7f63; font-size: 13px; letter-spacing: .1em; }
+
+  /* ── Loader ── */
+  #loader { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; background: radial-gradient(circle at 50% 40%, #15110b 0%, #05060a 70%); transition: opacity 1s ease; }
   #loader.hidden { opacity: 0; pointer-events: none; }
-  #loader .title {
-    font-size: clamp(22px, 4vw, 40px); letter-spacing: 0.18em;
-    color: var(--gold); text-shadow: 0 0 22px rgba(232,200,120,0.45);
-  }
-  #loader .sub { margin-top: 14px; font-size: 13px; letter-spacing: 0.32em; opacity: 0.6; text-transform: uppercase; }
-  .bar { margin-top: 26px; width: 220px; height: 2px; background: rgba(232,200,120,0.18); overflow: hidden; }
-  .bar > i { display: block; height: 100%; width: 0%; background: var(--gold); box-shadow: 0 0 12px var(--gold); transition: width .3s ease; }
+  #loader .l-title { font-family: 'Cinzel Decorative', serif; font-size: clamp(24px,4vw,44px); letter-spacing: .14em; color: var(--gold-bright); text-shadow: 0 0 24px rgba(201,168,76,.45); }
+  #loader .l-sub { margin-top: 14px; font-family: 'Cinzel', serif; font-size: 12px; letter-spacing: .34em; opacity: .6; text-transform: uppercase; }
+  .l-bar { margin-top: 26px; width: 220px; height: 2px; background: rgba(201,168,76,.18); overflow: hidden; }
+  .l-bar > i { display: block; height: 100%; width: 0%; background: var(--gold); box-shadow: 0 0 12px var(--gold); transition: width .3s; }
 
-  /* ---- Cinematic letterbox + vignette overlay ---- */
-  .bars { position: fixed; left: 0; right: 0; height: 9vh; background: #000; z-index: 20; pointer-events: none; transition: height .9s ease; }
-  .bars.top { top: 0; } .bars.bottom { bottom: 0; }
-  body.interactive .bars { height: 0; }
+  #err { position: fixed; inset: 0; z-index: 99; display: none; align-items: center; justify-content: center; padding: 40px; text-align: center; background: var(--bg); color: var(--ink); font-size: 15px; line-height: 1.6; }
 
-  /* ---- UI ---- */
-  #ui {
-    position: fixed; left: 0; right: 0; bottom: 26px; z-index: 30;
-    display: flex; gap: 14px; justify-content: center; align-items: center;
-    opacity: 0; transition: opacity 1s ease .3s; pointer-events: none;
-  }
-  body.interactive #ui { opacity: 1; pointer-events: auto; }
-  .btn {
-    font-family: inherit; font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase;
-    color: var(--gold); background: rgba(20,16,10,0.55); border: 1px solid rgba(232,200,120,0.35);
-    padding: 11px 20px; border-radius: 2px; cursor: pointer; backdrop-filter: blur(6px);
-    transition: all .25s ease;
-  }
-  .btn:hover { background: rgba(232,200,120,0.14); box-shadow: 0 0 20px rgba(232,200,120,0.25); border-color: var(--gold); }
-  .hint {
-    position: fixed; top: calc(9vh + 18px); left: 50%; transform: translateX(-50%); z-index: 30;
-    font-size: 12px; letter-spacing: 0.28em; text-transform: uppercase; opacity: 0; color: #d9cba7;
-    transition: opacity 1s ease; pointer-events: none;
-  }
-  body.interactive .hint { opacity: 0.55; }
-  #err {
-    position: fixed; inset: 0; z-index: 99; display: none; align-items: center; justify-content: center;
-    padding: 40px; text-align: center; background: #05060a; color: #f3e9d2; font-size: 15px; line-height: 1.6;
+  @media (max-width: 760px) {
+    nav { padding: 16px 22px; } .nav-links { display: none; }
+    .hero-content { left: 6%; right: 6%; } .right-panel { right: 18px; } .rune-bar { left: 6%; right: 18px; }
   }
 </style>
 </head>
 <body>
-  <div id="app"></div>
+  <div id="bg"></div>
 
-  <div class="bars top"></div>
-  <div class="bars bottom"></div>
-  <div class="hint">drag to orbit · scroll to zoom</div>
+  <!-- cinematic overlays -->
+  <div class="overlay vignette" id="vignette"></div>
+  <div class="overlay grain"></div>
+  <div class="corner tl"><svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 2 L2 20 M2 2 L20 2" stroke="#c9a84c" stroke-width="1" stroke-opacity="0.5"/><path d="M2 2 L8 8" stroke="#c9a84c" stroke-width="0.5" stroke-opacity="0.4"/><rect x="1" y="1" width="4" height="4" fill="none" stroke="#c9a84c" stroke-width="0.5" stroke-opacity="0.6"/></svg></div>
+  <div class="corner tr"><svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 2 L2 20 M2 2 L20 2" stroke="#c9a84c" stroke-width="1" stroke-opacity="0.5"/><path d="M2 2 L8 8" stroke="#c9a84c" stroke-width="0.5" stroke-opacity="0.4"/><rect x="1" y="1" width="4" height="4" fill="none" stroke="#c9a84c" stroke-width="0.5" stroke-opacity="0.6"/></svg></div>
+  <div class="corner bl"><svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 2 L2 20 M2 2 L20 2" stroke="#c9a84c" stroke-width="1" stroke-opacity="0.5"/><path d="M2 2 L8 8" stroke="#c9a84c" stroke-width="0.5" stroke-opacity="0.4"/><rect x="1" y="1" width="4" height="4" fill="none" stroke="#c9a84c" stroke-width="0.5" stroke-opacity="0.6"/></svg></div>
+  <div class="corner br"><svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 2 L2 20 M2 2 L20 2" stroke="#c9a84c" stroke-width="1" stroke-opacity="0.5"/><path d="M2 2 L8 8" stroke="#c9a84c" stroke-width="0.5" stroke-opacity="0.4"/><rect x="1" y="1" width="4" height="4" fill="none" stroke="#c9a84c" stroke-width="0.5" stroke-opacity="0.6"/></svg></div>
 
-  <div id="ui">
-    <button class="btn" id="turnBtn">Turn the Page</button>
-    <button class="btn" id="replayBtn">Replay Intro</button>
+  <nav>
+    <div class="nav-logo">The Enchanted Tome</div>
+    <ul class="nav-links">
+      <li><a href="#chapters">The Chapters</a></li>
+      <li><a href="#chapters">Lore</a></li>
+      <li><a href="#chapters">The Tale</a></li>
+      <li><a href="#chapters">Begin</a></li>
+    </ul>
+  </nav>
+
+  <!-- hero UI overlay (text driven by scroll) -->
+  <div class="hero-ui" id="heroUI">
+    <div class="hero-content">
+      <span class="sigil" id="sigil">✦</span>
+      <span class="subtitle" id="subtitle">A SONG OF INK AND GOLD</span>
+      <div class="divider"><span class="line"></span><span class="diamond"></span><span class="line right"></span></div>
+      <h1 class="title" id="title">The Ancient Chronicles</h1>
+      <p class="body" id="body">A leather tome sealed for a thousand years. Scroll, and watch it open.</p>
+      <div class="cta-row">
+        <button class="btn btn-solid" id="beginBtn">Begin the Journey</button>
+        <button class="btn btn-ghost" id="exploreBtn">Explore the Chapters</button>
+      </div>
+    </div>
+
+    <div class="right-panel">
+      <div class="chapter-label" id="chapterLabel">01 / 06</div>
+      <div class="vert-line"></div>
+      <div class="dots" id="dots"></div>
+    </div>
+
+    <div class="rune-bar" id="runeBar"></div>
+    <div class="scroll-hint"><span>Scroll</span><div class="arrow"></div></div>
   </div>
+
+  <div class="progress-wrap"><div class="progress-fill" id="progressFill"></div></div>
+
+  <!-- scroll runway that drives the 3D story -->
+  <div class="story" id="story"></div>
+
+  <!-- Section 2: Chapters card grid -->
+  <section class="chapters" id="chapters">
+    <div class="sec-head">
+      <p class="eyebrow">THE CHAPTERS OF THE TOME</p>
+      <div class="head-orn"><span class="line"></span><span class="rune">✦</span><span class="line"></span></div>
+      <h1 class="sec-title">The Six <em>Chapters</em></h1>
+      <p class="sec-sub">One book. Six tales. A thousand years of ink.</p>
+    </div>
+    <div class="grid" id="grid"></div>
+    <div class="foot-orn" style="margin-top:80px"><span class="line"></span><span>⚔</span><span class="line"></span></div>
+  </section>
+
+  <footer>
+    <div class="foot-orn"><span class="line"></span><span>✦</span><span class="line"></span></div>
+    <p>The Enchanted Tome · A cinematic 3D storybook · Crafted with Three.js & GSAP</p>
+  </footer>
 
   <div id="loader">
-    <div class="title">The Enchanted Tome</div>
-    <div class="sub">Opening the book…</div>
-    <div class="bar"><i id="barFill"></i></div>
+    <div class="l-title">The Enchanted Tome</div>
+    <div class="l-sub">Opening the book…</div>
+    <div class="l-bar"><i id="barFill"></i></div>
   </div>
-
   <div id="err"></div>
 
   <script type="importmap">
@@ -84,14 +234,14 @@
     "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
       "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-      "gsap": "https://cdn.jsdelivr.net/npm/gsap@3.13.0/index.js"
+      "gsap": "https://cdn.jsdelivr.net/npm/gsap@3.13.0/index.js",
+      "gsap/ScrollTrigger": "https://cdn.jsdelivr.net/npm/gsap@3.13.0/ScrollTrigger.js"
     }
   }
   </script>
 
   <script type="module">
   import * as THREE from 'three';
-  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
   import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
   import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
   import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -100,87 +250,102 @@
   import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
   import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
   import gsap from 'gsap';
+  import ScrollTrigger from 'gsap/ScrollTrigger';
 
-  // ===================================================================
-  //  CONFIG  — swap procedural assets for real Poly Haven / ambientCG
-  //            maps here later without touching the rest of the code.
-  // ===================================================================
+  gsap.registerPlugin(ScrollTrigger);
+
+  // ============ CONFIG ============
   const CFG = {
     book: { W: 2.6, H: 3.6, coverT: 0.13, pagesT: 0.46 },
-    pages: 5,                 // number of turnable pages
+    pages: 5,
     turnAngle: Math.PI * 0.92,
     coverOpenAngle: Math.PI * 0.95,
     bloom: { strength: 0.85, radius: 0.6, threshold: 0.85 },
     exposure: 1.05,
   };
 
-  // -------------------------------------------------------------------
-  //  Boot
-  // -------------------------------------------------------------------
-  let renderer, scene, camera, controls, composer, gradePass;
+  // ============ CHAPTERS (scroll-scrubbed, GOT-style) ============
+  const CHAPTERS = [
+    { p:[0,0.16],   sigil:'✦', subtitle:'A SONG OF INK AND GOLD', title:'The Ancient Chronicles',
+      body:'A leather tome sealed for a thousand years, its secrets bound in oiled hide and gilded thread. Scroll, and watch it wake.' },
+    { p:[0.16,0.34],sigil:'❦', subtitle:'THE SEAL IS BROKEN', title:'The Cover Lifts',
+      body:'The clasp gives way. Candlelight slips beneath the cover as it rises, and dust of ages drifts into the warm shaft of light.' },
+    { p:[0.34,0.52],sigil:'✶', subtitle:'CHAPTER THE FIRST', title:'The Gilded Page',
+      body:'Letters of gold catch fire on the first leaf, written by a hand long turned to dust — yet glowing still, as if freshly inked.' },
+    { p:[0.52,0.70],sigil:'❂', subtitle:'DEEPER STILL', title:'The Turning Leaves',
+      body:'Page after page surrenders to your hand. Each one whispers a fragment of a tale older than the binding that holds it.' },
+    { p:[0.70,0.88],sigil:'✷', subtitle:'THE FINAL LEAVES', title:'The Last Chapter',
+      body:'Near the end now. The light steadies, the motes settle, and the final pages lie open to the quiet of the chamber.' },
+    { p:[0.88,1.01],sigil:'♔', subtitle:'THE TALE REMAINS', title:'The Tome Endures',
+      body:'The book lies open, its story told and yet untold. It will wait, patient as stone, for the next hand brave enough to read.' },
+  ];
+
+  // ============ CARD GRID DATA (GOT Houses → Tome Chapters) ============
+  const CARDS = [
+    { id:'origin',  sigil:'✦', region:'The Prologue',   name:'THE<br>ORIGIN',   words:'"In the beginning, ink."',
+      accent:'#c9a84c', border:'#7a6130', bg:'linear-gradient(135deg,#1a1200,#2a1f00 60%,#1a1200)',
+      desc:'Where the first Maester pressed quill to vellum and bound the world in words. Every great tale begins as a single, fearless line.' },
+    { id:'frost',   sigil:'❄', region:'Chapter One',    name:'THE<br>FROST',    words:'"Winter keeps its secrets."',
+      accent:'#8fafc4', border:'#4a6380', bg:'linear-gradient(135deg,#0d1117,#1a2332 60%,#0d1117)',
+      desc:'A chapter written in the cold of the far north, where the ink froze on the page and the stories grew teeth.' },
+    { id:'flame',   sigil:'✶', region:'Chapter Two',    name:'THE<br>FLAME',    words:'"Fire remembers."',
+      accent:'#c0392b', border:'#7a1a1a', bg:'linear-gradient(135deg,#1a0000,#2d0a0a 60%,#1a0000)',
+      desc:'Pages scorched at the edges, lit by dragonfire and ambition. The boldest tale in the tome — and the most dangerous.' },
+    { id:'tide',    sigil:'❂', region:'Chapter Three',  name:'THE<br>TIDE',     words:'"What the sea takes."',
+      accent:'#3a7c8c', border:'#2a4a5a', bg:'linear-gradient(135deg,#050810,#0a1020 60%,#050810)',
+      desc:'Salt-stained leaves of reavers and drowned kings, where every margin is a map to a kingdom beneath the waves.' },
+    { id:'grove',   sigil:'❧', region:'Chapter Four',   name:'THE<br>GROVE',    words:'"Growing strong."',
+      accent:'#5a9e48', border:'#2a4a20', bg:'linear-gradient(135deg,#030a00,#0a1800 60%,#030a00)',
+      desc:'Illuminated with gold leaf and pressed roses — beauty hiding the thorns of a hundred quiet ambitions.' },
+    { id:'throne',  sigil:'♔', region:'The Epilogue',   name:'THE<br>THRONE',   words:'"You win, or you read on."',
+      accent:'#e8c97a', border:'#7a6130', bg:'linear-gradient(135deg,#0a0a00,#1f1c00 60%,#0a0a00)',
+      desc:'The final page, where every thread is gathered and the crown of the tale is set. Close the book, and it begins again.' },
+  ];
+
+  // ============ BOOT ============
+  let renderer, scene, camera, composer, gradePass;
   const clock = new THREE.Clock();
-  const updaters = [];                 // per-frame callbacks
-  const state = { coverOpen: 0, titleGlow: 0 };
-  let introTimeline = null;
+  const updaters = [];
+  const story = { cover: 0, glow: 0 };       // eased targets
+  let storyProgress = 0;
 
   function init() {
-    const app = document.getElementById('app');
-
+    const host = document.getElementById('bg');
     renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     renderer.setSize(innerWidth, innerHeight);
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    // ACES Filmic = the cinematic, never-clipping "movie" curve. OutputPass
-    // reads this and applies it (plus sRGB) as the final composite step.
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = CFG.exposure;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    app.appendChild(renderer.domElement);
+    host.appendChild(renderer.domElement);
 
     scene = new THREE.Scene();
-    scene.background = makeGradientBackground();
-    // Warm exponential haze so the dark background falls away and the book pops.
     scene.fog = new THREE.FogExp2(0x0a0806, 0.045);
 
     camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 100);
-    camera.position.set(7.5, 5.2, 9.5);
-    camera.lookAt(0, 0, 0);
 
-    // Image-based lighting: procedural RoomEnvironment gives soft, realistic
-    // reflections + ambient on the leather. (Drop an .hdr here for photoreal.)
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
     RectAreaLightUniformsLib.init();
-
     buildLights();
-    const table = buildTable();
-    scene.add(table);
-
+    scene.add(buildTable());
     const book = buildBook();
-    book.rotation.x = -0.13;             // tilt back slightly, as if on a stand
+    book.rotation.x = -0.13;
     scene.add(book);
-
-    buildGodRay(book);
-    buildSparkles(book);
-
-    setupControls();
+    buildGodRay();
+    buildSparkles();
     setupPostProcessing();
-    setupUI();
 
+    setStoryProgress(0);
     addEventListener('resize', onResize);
-
-    finishLoading(() => startIntro(book));
   }
 
-  // -------------------------------------------------------------------
-  //  Lighting — warm three-point + a soft RectAreaLight "window"
-  // -------------------------------------------------------------------
+  // ---- lights ----
   function buildLights() {
     scene.add(new THREE.HemisphereLight(0x4b3a26, 0x070707, 0.25));
-
-    // Warm key (the candle / shaft of light) — the only shadow caster.
     const key = new THREE.DirectionalLight(0xffd9a0, 2.6);
     key.position.set(-4.5, 7.5, 4.5);
     key.castShadow = true;
@@ -188,651 +353,383 @@
     key.shadow.camera.near = 1; key.shadow.camera.far = 25;
     key.shadow.camera.left = -6; key.shadow.camera.right = 6;
     key.shadow.camera.top = 6; key.shadow.camera.bottom = -6;
-    key.shadow.bias = -0.0004;
-    key.shadow.radius = 5;
+    key.shadow.bias = -0.0004; key.shadow.radius = 5;
     scene.add(key);
-
-    // Cool rim from behind to separate the book from the dark.
     const rim = new THREE.DirectionalLight(0x8fb6ff, 0.8);
-    rim.position.set(3, 3, -6);
-    scene.add(rim);
-
-    // Soft broad highlight that makes leather + gilt read as real.
+    rim.position.set(3, 3, -6); scene.add(rim);
     const area = new THREE.RectAreaLight(0xfff0d0, 4.5, 5, 6);
-    area.position.set(-5, 4, 5);
-    area.lookAt(0, 0, 0);
-    scene.add(area);
+    area.position.set(-5, 4, 5); area.lookAt(0, 0, 0); scene.add(area);
   }
-
   function buildTable() {
-    const geo = new THREE.PlaneGeometry(60, 60);
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0x1a140d, roughness: 0.82, metalness: 0.1,
-    });
-    const m = new THREE.Mesh(geo, mat);
-    m.rotation.x = -Math.PI / 2;
-    m.position.y = -CFG.book.H / 2 - 0.02;
-    m.receiveShadow = true;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(60, 60),
+      new THREE.MeshStandardMaterial({ color: 0x1a140d, roughness: 0.82, metalness: 0.1 }));
+    m.rotation.x = -Math.PI / 2; m.position.y = -CFG.book.H / 2 - 0.02; m.receiveShadow = true;
     return m;
   }
 
-  // -------------------------------------------------------------------
-  //  The book — leather covers + spine + a skinned-mesh page rig
-  // -------------------------------------------------------------------
-  let coverPivot;            // front cover hinge group
-  const pageRig = [];        // { pivot, bones, turned, baseZ }
-  let titleMat;              // glowing-title material
-  let currentPage = 0;
-
+  // ---- book ----
+  let coverPivot, titleMat;
+  const pageRig = [];
   function buildBook() {
     const { W, H, coverT, pagesT } = CFG.book;
     const group = new THREE.Group();
-
-    // --- Materials -------------------------------------------------
     const leather = makeLeatherMaterial();
     const paperTex = makePaperTexture();
-    const paperMat = new THREE.MeshStandardMaterial({
-      map: paperTex, roughness: 0.95, metalness: 0.0, side: THREE.DoubleSide,
-    });
+    const paperMat = new THREE.MeshStandardMaterial({ map: paperTex, roughness: 0.95, side: THREE.DoubleSide });
+    const halfPB = pagesT / 2, coverFaceZ = halfPB + coverT / 2;
 
-    const halfPB = pagesT / 2;
-    const coverFaceZ = halfPB + coverT / 2;
-
-    // --- Back cover -----------------------------------------------
     const back = new THREE.Mesh(new THREE.BoxGeometry(W, H, coverT), leather);
-    back.position.z = -coverFaceZ;
-    back.castShadow = back.receiveShadow = true;
-    group.add(back);
+    back.position.z = -coverFaceZ; back.castShadow = back.receiveShadow = true; group.add(back);
 
-    // --- Page block (closed stack) --------------------------------
-    const block = new THREE.Mesh(
-      new THREE.BoxGeometry(W * 0.97, H * 0.97, pagesT),
-      new THREE.MeshStandardMaterial({ color: 0xe9dcc0, roughness: 0.95 })
-    );
-    block.castShadow = block.receiveShadow = true;
-    group.add(block);
+    const block = new THREE.Mesh(new THREE.BoxGeometry(W * 0.97, H * 0.97, pagesT),
+      new THREE.MeshStandardMaterial({ color: 0xe9dcc0, roughness: 0.95 }));
+    block.castShadow = block.receiveShadow = true; group.add(block);
 
-    // --- Titled top page (revealed when the book opens) -----------
     titleMat = makeTitleMaterial(paperTex);
     const topPage = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.95, H * 0.95), titleMat);
-    topPage.position.z = halfPB + 0.001;
-    group.add(topPage);
+    topPage.position.z = halfPB + 0.001; group.add(topPage);
 
-    // --- Spine (wraps the left/hinge edge) ------------------------
-    const spine = new THREE.Mesh(
-      new THREE.BoxGeometry(coverT * 1.4, H, pagesT + coverT * 2), leather
-    );
-    spine.position.x = -W / 2 - coverT * 0.2;
-    spine.castShadow = spine.receiveShadow = true;
-    group.add(spine);
-
-    // Raised spine bands — modelled geometry (catch real light on a 360 orbit).
+    const spine = new THREE.Mesh(new THREE.BoxGeometry(coverT * 1.4, H, pagesT + coverT * 2), leather);
+    spine.position.x = -W / 2 - coverT * 0.2; spine.castShadow = spine.receiveShadow = true; group.add(spine);
     for (let i = -1; i <= 1; i++) {
-      const band = new THREE.Mesh(
-        new THREE.BoxGeometry(coverT * 1.7, 0.14, pagesT + coverT * 2.2), leather
-      );
-      band.position.set(-W / 2 - coverT * 0.2, i * (H * 0.26), 0);
-      band.castShadow = true;
-      group.add(band);
+      const band = new THREE.Mesh(new THREE.BoxGeometry(coverT * 1.7, 0.14, pagesT + coverT * 2.2), leather);
+      band.position.set(-W / 2 - coverT * 0.2, i * (H * 0.26), 0); band.castShadow = true; group.add(band);
     }
-
-    // --- Turnable pages (skinned meshes, hinged at the spine) ------
     for (let i = 0; i < CFG.pages; i++) {
       const baseZ = halfPB + 0.004 + i * 0.004;
       const p = makeSkinnedPage(W * 0.95, H * 0.95, paperMat.clone());
-      p.pivot.position.set(-W / 2, 0, baseZ);
-      p.baseZ = baseZ;
-      p.turned = false;
-      group.add(p.pivot);
-      pageRig.push(p);
+      p.pivot.position.set(-W / 2, 0, baseZ); p.baseZ = baseZ; p.turned = false;
+      group.add(p.pivot); pageRig.push(p);
     }
-
-    // --- Front cover (hinged at the spine, opens around Y) --------
     coverPivot = new THREE.Group();
     coverPivot.position.set(-W / 2, 0, coverFaceZ);
     const front = new THREE.Mesh(new THREE.BoxGeometry(W, H, coverT), leather);
-    front.position.x = W / 2;            // extend to the right of the hinge
-    front.castShadow = front.receiveShadow = true;
-    coverPivot.add(front);
-
-    // Embossed gold title on the cover (emissive → feeds selective bloom).
-    const emblem = new THREE.Mesh(
-      new THREE.PlaneGeometry(W * 0.7, H * 0.7),
-      makeCoverEmblemMaterial()
-    );
-    emblem.position.set(W / 2, 0, coverT / 2 + 0.001);
-    coverPivot.add(emblem);
+    front.position.x = W / 2; front.castShadow = front.receiveShadow = true; coverPivot.add(front);
+    const emblem = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.7, H * 0.7), makeCoverEmblemMaterial());
+    emblem.position.set(W / 2, 0, coverT / 2 + 0.001); coverPivot.add(emblem);
     group.add(coverPivot);
-
     return group;
   }
-
-  // Subdivided plane + a bone chain along X, bent procedurally each frame.
-  // This is the production-proven page-turn rig (Wawa Sensei approach).
   function makeSkinnedPage(w, h, material) {
     const SEG = 20;
-    const geo = new THREE.PlaneGeometry(w, h, SEG, 1);
-    geo.translate(w / 2, 0, 0);          // move hinge to local x = 0
-
-    const seg = w / SEG;
-    const pos = geo.attributes.position;
-    const skinIndices = [];
-    const skinWeights = [];
+    const geo = new THREE.PlaneGeometry(w, h, SEG, 1); geo.translate(w / 2, 0, 0);
+    const seg = w / SEG, pos = geo.attributes.position;
+    const si = [], sw = [];
     for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i);
-      const f = x / seg;
-      const lower = Math.max(0, Math.min(SEG - 1, Math.floor(f)));
-      const upper = lower + 1;
-      const w1 = f - lower;
-      skinIndices.push(lower, upper, 0, 0);
-      skinWeights.push(1 - w1, w1, 0, 0);
+      const x = pos.getX(i), f = x / seg;
+      const lower = Math.max(0, Math.min(SEG - 1, Math.floor(f))), upper = lower + 1, w1 = f - lower;
+      si.push(lower, upper, 0, 0); sw.push(1 - w1, w1, 0, 0);
     }
-    geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
-    geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
-
-    const bones = [];
-    let prev = null;
-    for (let i = 0; i <= SEG; i++) {
-      const b = new THREE.Bone();
-      b.position.x = i === 0 ? 0 : seg;
-      if (prev) prev.add(b); else b.position.x = 0;
-      bones.push(b);
-      prev = b;
-    }
-
-    const mesh = new THREE.SkinnedMesh(geo, material);
-    mesh.castShadow = true;
-    mesh.add(bones[0]);
-    mesh.bind(new THREE.Skeleton(bones));
-
-    const pivot = new THREE.Group();
-    pivot.add(mesh);
-
+    geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
+    geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
+    const bones = []; let prev = null;
+    for (let i = 0; i <= SEG; i++) { const b = new THREE.Bone(); b.position.x = i === 0 ? 0 : seg; if (prev) prev.add(b); bones.push(b); prev = b; }
+    const mesh = new THREE.SkinnedMesh(geo, material); mesh.castShadow = true;
+    mesh.add(bones[0]); mesh.bind(new THREE.Skeleton(bones));
+    const pivot = new THREE.Group(); pivot.add(mesh);
     return { pivot, mesh, bones };
   }
 
-  // -------------------------------------------------------------------
-  //  Atmosphere: god-ray shaft + drifting dust sparkles
-  // -------------------------------------------------------------------
-  function buildGodRay(book) {
-    const h = 11;
-    const geo = new THREE.CylinderGeometry(0.15, 2.4, h, 40, 1, true);
-    geo.translate(0, -h / 2, 0);         // origin at the top (light source)
+  // ---- atmosphere ----
+  function buildGodRay() {
+    const h = 11; const geo = new THREE.CylinderGeometry(0.15, 2.4, h, 40, 1, true); geo.translate(0, -h / 2, 0);
     const mat = new THREE.ShaderMaterial({
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-      side: THREE.DoubleSide,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
       uniforms: { uColor: { value: new THREE.Color(0xffdca0) } },
-      vertexShader: `
-        varying vec2 vUv;
-        void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-      fragmentShader: `
-        varying vec2 vUv; uniform vec3 uColor;
-        void main(){
-          float edge = smoothstep(0.0, 0.5, vUv.x) * smoothstep(1.0, 0.5, vUv.x);
-          float fade = pow(1.0 - vUv.y, 1.6);          // brightest at the source
-          float a = edge * fade * 0.5;
-          gl_FragColor = vec4(uColor, a);
-        }`,
+      vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+      fragmentShader: `varying vec2 vUv; uniform vec3 uColor;
+        void main(){ float edge=smoothstep(0.0,0.5,vUv.x)*smoothstep(1.0,0.5,vUv.x);
+        float fade=pow(1.0-vUv.y,1.6); gl_FragColor=vec4(uColor, edge*fade*0.5); }`,
     });
-    const cone = new THREE.Mesh(geo, mat);
-    cone.position.set(-3.6, 8.5, 3.6);
-    cone.lookAt(0, -1, 0);
-    cone.renderOrder = 2;
-    scene.add(cone);
+    const cone = new THREE.Mesh(geo, mat); cone.position.set(-3.6, 8.5, 3.6); cone.lookAt(0, -1, 0); cone.renderOrder = 2; scene.add(cone);
   }
-
-  function buildSparkles(book) {
+  function buildSparkles() {
     const COUNT = 480;
-    const positions = new Float32Array(COUNT * 3);
-    const scales = new Float32Array(COUNT);
-    const seeds = new Float32Array(COUNT);
+    const positions = new Float32Array(COUNT * 3), scales = new Float32Array(COUNT), seeds = new Float32Array(COUNT);
     for (let i = 0; i < COUNT; i++) {
-      positions[i * 3 + 0] = (Math.random() - 0.5) * 9;
-      positions[i * 3 + 1] = (Math.random() - 0.5) * 8;
-      positions[i * 3 + 2] = (Math.random() - 0.5) * 7;
-      scales[i] = Math.random();
-      seeds[i] = Math.random() * 100;
+      positions[i*3] = (Math.random()-0.5)*9; positions[i*3+1] = (Math.random()-0.5)*8; positions[i*3+2] = (Math.random()-0.5)*7;
+      scales[i] = Math.random(); seeds[i] = Math.random()*100;
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geo.setAttribute('aScale', new THREE.BufferAttribute(scales, 1));
     geo.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
-
     const mat = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
       uniforms: { uTime: { value: 0 }, uPixelRatio: { value: Math.min(devicePixelRatio, 2) } },
-      vertexShader: `
-        attribute float aScale; attribute float aSeed;
-        uniform float uTime; uniform float uPixelRatio;
-        varying float vTwinkle;
-        void main(){
-          vec3 p = position;
-          p.y += sin(uTime * 0.35 + aSeed) * 0.4;        // slow drift
-          p.x += cos(uTime * 0.22 + aSeed) * 0.3;
-          vec4 mv = modelViewMatrix * vec4(p, 1.0);
-          gl_Position = projectionMatrix * mv;
-          gl_PointSize = (12.0 * aScale + 3.0) * uPixelRatio / -mv.z;
-          vTwinkle = 0.5 + 0.5 * sin(uTime * 2.0 + aSeed * 3.0);
-        }`,
-      fragmentShader: `
-        varying float vTwinkle;
-        void main(){
-          float d = distance(gl_PointCoord, vec2(0.5));
-          if (d > 0.5) discard;
-          float a = smoothstep(0.5, 0.0, d) * vTwinkle;
-          // emissive warm gold > 1.0 so selective bloom picks it up
-          gl_FragColor = vec4(vec3(1.4, 1.1, 0.6), a);
-        }`,
+      vertexShader: `attribute float aScale; attribute float aSeed; uniform float uTime, uPixelRatio; varying float vTw;
+        void main(){ vec3 p=position; p.y+=sin(uTime*0.35+aSeed)*0.4; p.x+=cos(uTime*0.22+aSeed)*0.3;
+        vec4 mv=modelViewMatrix*vec4(p,1.0); gl_Position=projectionMatrix*mv;
+        gl_PointSize=(12.0*aScale+3.0)*uPixelRatio/-mv.z; vTw=0.5+0.5*sin(uTime*2.0+aSeed*3.0); }`,
+      fragmentShader: `varying float vTw; void main(){ float d=distance(gl_PointCoord,vec2(0.5)); if(d>0.5)discard;
+        gl_FragColor=vec4(vec3(1.4,1.1,0.6), smoothstep(0.5,0.0,d)*vTw); }`,
     });
-    const points = new THREE.Points(geo, mat);
-    scene.add(points);
+    const points = new THREE.Points(geo, mat); scene.add(points);
     updaters.push((t) => { mat.uniforms.uTime.value = t; });
   }
 
-  // -------------------------------------------------------------------
-  //  Camera / controls
-  // -------------------------------------------------------------------
-  function setupControls() {
-    controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.06;
-    controls.target.set(0, 0, 0);
-    controls.minDistance = 4.5;
-    controls.maxDistance = 16;
-    controls.maxPolarAngle = Math.PI * 0.52;   // can't go under the table
-    controls.minPolarAngle = Math.PI * 0.12;
-    controls.enabled = false;                  // locked during the intro
-    controls.autoRotate = false;
-    controls.autoRotateSpeed = 0.35;
-  }
-
-  // -------------------------------------------------------------------
-  //  Post-processing: RenderPass → Bloom → Grade(vignette/grain/CA) → Output
-  // -------------------------------------------------------------------
+  // ---- post ----
   function setupPostProcessing() {
     composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-
-    const bloom = new UnrealBloomPass(
-      new THREE.Vector2(innerWidth, innerHeight),
-      CFG.bloom.strength, CFG.bloom.radius, CFG.bloom.threshold
-    );
-    composer.addPass(bloom);
-
+    composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight),
+      CFG.bloom.strength, CFG.bloom.radius, CFG.bloom.threshold));
     gradePass = new ShaderPass({
-      uniforms: {
-        tDiffuse: { value: null },
-        uTime: { value: 0 },
-        uVignette: { value: 1.05 },
-        uGrain: { value: 0.04 },
-        uCA: { value: 0.0016 },
-      },
-      vertexShader: `
-        varying vec2 vUv;
-        void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-      fragmentShader: `
-        varying vec2 vUv;
-        uniform sampler2D tDiffuse;
-        uniform float uTime, uVignette, uGrain, uCA;
-        float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
-        void main(){
-          vec2 dir = vUv - 0.5;
-          // subtle chromatic aberration, growing toward the edges
-          float r = texture2D(tDiffuse, vUv - dir * uCA).r;
-          float g = texture2D(tDiffuse, vUv).g;
-          float b = texture2D(tDiffuse, vUv + dir * uCA).b;
-          vec3 col = vec3(r, g, b);
-          // vignette to frame the book
-          float vig = 1.0 - dot(dir, dir) * uVignette;
-          col *= clamp(vig, 0.0, 1.0);
-          // filmic grain to break up banding
-          float grain = (hash(vUv * vec2(1920.0,1080.0) + uTime) - 0.5) * uGrain;
-          col += grain;
-          gl_FragColor = vec4(col, 1.0);
-        }`,
+      uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uVignette: { value: 1.05 }, uGrain: { value: 0.04 }, uCA: { value: 0.0016 } },
+      vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+      fragmentShader: `varying vec2 vUv; uniform sampler2D tDiffuse; uniform float uTime,uVignette,uGrain,uCA;
+        float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+        void main(){ vec2 dir=vUv-0.5;
+          float r=texture2D(tDiffuse,vUv-dir*uCA).r, g=texture2D(tDiffuse,vUv).g, b=texture2D(tDiffuse,vUv+dir*uCA).b;
+          vec3 col=vec3(r,g,b); col*=clamp(1.0-dot(dir,dir)*uVignette,0.0,1.0);
+          col+=(hash(vUv*vec2(1920.0,1080.0)+uTime)-0.5)*uGrain; gl_FragColor=vec4(col,1.0); }`,
     });
     composer.addPass(gradePass);
-
-    composer.addPass(new OutputPass());    // ACES tone map + sRGB, last
+    composer.addPass(new OutputPass());
     updaters.push((t) => { gradePass.uniforms.uTime.value = t; });
   }
 
-  // -------------------------------------------------------------------
-  //  Cinematic intro (GSAP)
-  // -------------------------------------------------------------------
-  function startIntro() {
-    controls.enabled = false;
-    document.body.classList.remove('interactive');
-    state.coverOpen = 0; state.titleGlow = 0;
-    pageRig.forEach((p) => { p.turned = false; });
-    currentPage = 0;
+  // ============ SCROLL-DRIVEN STORY ============
+  // camera keyframes interpolated by progress
+  const CAM = [
+    { p: 0.00, pos: [7.5, 5.2, 9.5],  tgt: [0, 0, 0] },
+    { p: 0.18, pos: [0.6, 1.9, 6.4],  tgt: [0, 0, 0] },
+    { p: 0.40, pos: [-1.4, 1.2, 5.6], tgt: [0, 0.1, 0] },
+    { p: 0.70, pos: [1.6, 1.6, 5.4],  tgt: [0, 0.1, 0] },
+    { p: 1.00, pos: [0.0, 1.4, 6.0],  tgt: [0, 0, 0] },
+  ];
+  const lerp = (a, b, t) => a + (b - a) * t;
+  function camAt(p) {
+    let i = 0; while (i < CAM.length - 1 && p > CAM[i + 1].p) i++;
+    const a = CAM[i], b = CAM[Math.min(i + 1, CAM.length - 1)];
+    const t = a === b ? 0 : (p - a.p) / (b.p - a.p);
+    return {
+      pos: [lerp(a.pos[0], b.pos[0], t), lerp(a.pos[1], b.pos[1], t), lerp(a.pos[2], b.pos[2], t)],
+      tgt: [lerp(a.tgt[0], b.tgt[0], t), lerp(a.tgt[1], b.tgt[1], t), lerp(a.tgt[2], b.tgt[2], t)],
+    };
+  }
 
-    const camPos = { x: 7.5, y: 5.2, z: 9.5 };
-    camera.position.set(camPos.x, camPos.y, camPos.z);
+  function setStoryProgress(p) {
+    storyProgress = p;
+    // cover opens over 0.16–0.34, title glows just after
+    story.cover = THREE.MathUtils.clamp((p - 0.16) / 0.18, 0, 1);
+    story.glow = THREE.MathUtils.clamp((p - 0.30) / 0.14, 0, 1);
+    // pages turn over 0.34–0.88
+    const turnCount = Math.round(THREE.MathUtils.clamp((p - 0.34) / (0.88 - 0.34), 0, 1) * CFG.pages);
+    pageRig.forEach((pg, i) => { pg.turned = i < turnCount; });
+    // camera
+    const c = camAt(p);
+    if (camera) { camera.position.set(c.pos[0], c.pos[1], c.pos[2]); camera.lookAt(c.tgt[0], c.tgt[1], c.tgt[2]); }
+  }
 
-    if (introTimeline) introTimeline.kill();
-    introTimeline = gsap.timeline({
-      defaults: { ease: 'power2.inOut' },
-      onUpdate: () => camera.lookAt(0, 0, 0),
-      onComplete: () => {
-        controls.enabled = true;
-        controls.autoRotate = true;
-        document.body.classList.add('interactive');
+  // ---- chapter text cross-fade (GOT transitionChapter) ----
+  let prevChapter = -1;
+  function transitionChapter(idx) {
+    if (idx === prevChapter) return;
+    prevChapter = idx;
+    const ch = CHAPTERS[idx];
+    const els = ['sigil','subtitle','title','body'].map((id) => document.getElementById(id));
+    const tl = gsap.timeline();
+    tl.to(els, { y: -22, opacity: 0, duration: 0.32, ease: 'power2.in', stagger: 0.04 })
+      .call(() => {
+        document.getElementById('sigil').textContent = ch.sigil;
+        document.getElementById('subtitle').textContent = ch.subtitle;
+        document.getElementById('title').textContent = ch.title;
+        document.getElementById('body').textContent = ch.body;
+      })
+      .fromTo(els, { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: 'power3.out', stagger: 0.06 });
+    document.getElementById('chapterLabel').textContent =
+      `${String(idx + 1).padStart(2, '0')} / ${String(CHAPTERS.length).padStart(2, '0')}`;
+    [...document.getElementById('dots').children].forEach((d, i) => d.classList.toggle('active', i === idx));
+  }
+
+  function setupScroll() {
+    // dots + rune ticks
+    const dots = document.getElementById('dots');
+    CHAPTERS.forEach(() => { const d = document.createElement('div'); d.className = 'dot'; dots.appendChild(d); });
+    const runeBar = document.getElementById('runeBar');
+    for (let i = 0; i < 80; i++) { const t = document.createElement('div'); t.className = 'rune-tick'; runeBar.appendChild(t); }
+
+    ScrollTrigger.create({
+      trigger: '#story', start: 'top top', end: 'bottom bottom', scrub: 1.1,
+      onUpdate: (self) => {
+        const p = self.progress;
+        setStoryProgress(p);
+        document.getElementById('progressFill').style.width = `${p * 100}%`;
+        document.getElementById('vignette').style.opacity = String(0.55 + Math.sin(p * Math.PI) * 0.25);
+        let idx = CHAPTERS.findIndex((c) => p >= c.p[0] && p < c.p[1]);
+        if (idx === -1) idx = CHAPTERS.length - 1;
+        transitionChapter(idx);
       },
     });
-
-    // Beat 1: dolly in to the hero framing.
-    introTimeline.to(camPos, {
-      x: 0.6, y: 1.9, z: 6.4, duration: 2.6,
-      onUpdate: () => camera.position.set(camPos.x, camPos.y, camPos.z),
+    // fade hero UI out as the chapters section arrives
+    ScrollTrigger.create({
+      trigger: '#chapters', start: 'top 75%', end: 'top 30%',
+      onUpdate: (self) => { document.getElementById('heroUI').style.opacity = String(1 - self.progress); },
     });
-    // Beat 2: the cover lifts open.
-    introTimeline.to(state, { coverOpen: 1, duration: 1.4, ease: 'power3.out' }, '-=0.6');
-    // Beat 3: the first page turns.
-    introTimeline.add(() => turnPage(), '-=0.3');
-    // Beat 4: the gold title glows to life.
-    introTimeline.to(state, { titleGlow: 1, duration: 1.2, ease: 'sine.inOut' }, '-=0.4');
-    // Beat 5: settle to a calm display angle.
-    introTimeline.to(camPos, {
-      x: 0.0, y: 1.4, z: 6.0, duration: 1.6, ease: 'power1.inOut',
-      onUpdate: () => camera.position.set(camPos.x, camPos.y, camPos.z),
-    }, '-=0.2');
+
+    document.getElementById('beginBtn').addEventListener('click', () =>
+      window.scrollTo({ top: innerHeight * 1.6, behavior: 'smooth' }));
+    document.getElementById('exploreBtn').addEventListener('click', () =>
+      document.getElementById('chapters').scrollIntoView({ behavior: 'smooth' }));
   }
 
-  function turnPage() {
-    if (currentPage >= pageRig.length) return;
-    const p = pageRig[currentPage];
-    p.turned = true;
-    currentPage++;
+  // ============ CARD GRID (GOT Houses) ============
+  function buildCards() {
+    const grid = document.getElementById('grid');
+    CARDS.forEach((c, index) => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.style.setProperty('--accent', c.accent);
+      card.style.setProperty('--border', c.border);
+      card.style.background = c.bg;
+      card.innerHTML = `
+        <span class="c-corner tl"></span><span class="c-corner tr"></span>
+        <span class="c-corner bl"></span><span class="c-corner br"></span>
+        <div class="c-sigil">${c.sigil}</div>
+        <p class="c-region">${c.region}</p>
+        <h2 class="c-name">${c.name}</h2>
+        <p class="c-words">${c.words}</p>
+        <p class="c-desc">${c.desc}</p>
+        <div class="c-bar"></div>`;
+      grid.appendChild(card);
+
+      // staggered entrance via IntersectionObserver
+      const obs = new IntersectionObserver(([e]) => {
+        if (e.isIntersecting) { setTimeout(() => card.classList.add('visible'), index * 110); obs.disconnect(); }
+      }, { threshold: 0.15 });
+      obs.observe(card);
+
+      // 3D sigil tilt on mouse move
+      const sigil = card.querySelector('.c-sigil');
+      card.addEventListener('mousemove', (ev) => {
+        const r = card.getBoundingClientRect();
+        const x = ((ev.clientX - r.left) / r.width - 0.5) * 16;
+        const y = ((ev.clientY - r.top) / r.height - 0.5) * 16;
+        sigil.style.transform = `rotateY(${x}deg) rotateX(${-y}deg) scale(1.08)`;
+      });
+      card.addEventListener('mouseleave', () => { sigil.style.transform = ''; });
+    });
   }
 
-  // -------------------------------------------------------------------
-  //  UI
-  // -------------------------------------------------------------------
-  function setupUI() {
-    document.getElementById('turnBtn').addEventListener('click', turnPage);
-    document.getElementById('replayBtn').addEventListener('click', () => startIntro());
-  }
-
-  // -------------------------------------------------------------------
-  //  Render loop
-  // -------------------------------------------------------------------
+  // ============ RENDER LOOP ============
   const damp = THREE.MathUtils.damp;
   function animate() {
     requestAnimationFrame(animate);
     const dt = Math.min(clock.getDelta(), 0.05);
     const t = clock.elapsedTime;
-
-    // Cover open (eased by GSAP via state.coverOpen)
-    if (coverPivot) coverPivot.rotation.y = -state.coverOpen * CFG.coverOpenAngle;
-
-    // Title glow → emissive intensity (selective bloom does the rest)
-    if (titleMat) titleMat.emissiveIntensity = state.titleGlow * 2.2;
-
-    // Page turns: damped easing of rotation + a procedural mid-turn curl.
-    for (const p of pageRig) {
-      const target = p.turned ? 1 : 0;
-      p._prog = damp(p._prog ?? 0, target, 6, dt);
-      p.pivot.rotation.y = -p._prog * CFG.turnAngle;
-      p.pivot.position.z = p.baseZ + Math.sin(p._prog * Math.PI) * 0.18; // lift to avoid z-fight
-      const curl = Math.sin(p._prog * Math.PI) * 0.12;                   // bow the page mid-turn
-      for (const b of p.bones) b.rotation.y = curl;
+    if (coverPivot) coverPivot.rotation.y = -story.cover * CFG.coverOpenAngle;
+    if (titleMat) titleMat.emissiveIntensity = story.glow * 2.2;
+    for (const pg of pageRig) {
+      const target = pg.turned ? 1 : 0;
+      pg._prog = damp(pg._prog ?? 0, target, 6, dt);
+      pg.pivot.rotation.y = -pg._prog * CFG.turnAngle;
+      pg.pivot.position.z = pg.baseZ + Math.sin(pg._prog * Math.PI) * 0.18;
+      const curl = Math.sin(pg._prog * Math.PI) * 0.12;
+      for (const b of pg.bones) b.rotation.y = curl;
     }
-
     for (const fn of updaters) fn(t);
-
-    if (controls.enabled) controls.update();
     composer.render();
   }
-
   function onResize() {
-    camera.aspect = innerWidth / innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
-    composer.setSize(innerWidth, innerHeight);
+    camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
+    ScrollTrigger.refresh();
   }
 
-  // ===================================================================
-  //  Procedural assets (value-noise FBM) — no external files required.
-  //  Replace these with real PBR maps / HDRIs for photoreal output.
-  // ===================================================================
+  // ============ PROCEDURAL ASSETS ============
   function makeLeatherMaterial() {
     const size = 512;
-    const height = fbmCanvas(size, (n, x, y) => {
-      const pores = fbm(x * 60, y * 60, 3);   // fine grain
-      return n * 0.7 + pores * 0.3;
-    });
-    const albedo = paintCanvas(size, (x, y, h) => {
-      const base = [0x46 / 255, 0x29 / 255, 0x16 / 255]; // deep oxblood-brown
-      const v = 0.55 + h * 0.6;
-      return [base[0] * v, base[1] * v, base[2] * v];
-    }, height);
-    const rough = paintCanvas(size, (x, y, h) => {
-      const r = 0.55 + (1 - h) * 0.35;          // crevices rougher
-      return [r, r, r];
-    }, height);
+    const height = fbmCanvas(size, (n, x, y) => n * 0.7 + fbm(x * 60, y * 60, 3) * 0.3);
+    const albedo = paintCanvas(size, (x, y, h) => { const v = 0.55 + h * 0.6; return [0x46/255*v, 0x29/255*v, 0x16/255*v]; }, height);
+    const rough = paintCanvas(size, (x, y, h) => { const r = 0.55 + (1 - h) * 0.35; return [r, r, r]; }, height);
     const normal = normalFromHeight(height, 2.2);
-
-    const albedoTex = canvasTexture(albedo, THREE.SRGBColorSpace, 2);
-    const roughTex = canvasTexture(rough, THREE.NoColorSpace, 2);
-    const normalTex = canvasTexture(normal, THREE.NoColorSpace, 2);
-
     return new THREE.MeshPhysicalMaterial({
-      map: albedoTex,
-      normalMap: normalTex,
-      normalScale: new THREE.Vector2(0.8, 0.8),
-      roughnessMap: roughTex,
-      roughness: 1.0, metalness: 0.0,
-      clearcoat: 0.28, clearcoatRoughness: 0.6,   // waxed/oiled sheen
-      envMapIntensity: 1.0,
+      map: canvasTexture(albedo, THREE.SRGBColorSpace, 2),
+      normalMap: canvasTexture(normal, THREE.NoColorSpace, 2), normalScale: new THREE.Vector2(0.8, 0.8),
+      roughnessMap: canvasTexture(rough, THREE.NoColorSpace, 2),
+      roughness: 1.0, metalness: 0.0, clearcoat: 0.28, clearcoatRoughness: 0.6, envMapIntensity: 1.0,
     });
   }
-
   function makePaperTexture() {
-    const size = 512;
-    const c = document.createElement('canvas'); c.width = c.height = size;
-    const ctx = c.getContext('2d');
-    ctx.fillStyle = '#efe6cf'; ctx.fillRect(0, 0, size, size);
-    // faint fibres
-    for (let i = 0; i < 4000; i++) {
-      const x = Math.random() * size, y = Math.random() * size;
-      ctx.fillStyle = `rgba(${150 + Math.random() * 60 | 0},${130 + Math.random() * 50 | 0},${95 + Math.random() * 40 | 0},0.05)`;
-      ctx.fillRect(x, y, 1.5, 1.5);
-    }
-    // aged edges
-    const g = ctx.createRadialGradient(size / 2, size / 2, size * 0.3, size / 2, size / 2, size * 0.72);
-    g.addColorStop(0, 'rgba(120,90,50,0)');
-    g.addColorStop(1, 'rgba(90,60,30,0.35)');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, size, size);
+    const size = 512, c = document.createElement('canvas'); c.width = c.height = size;
+    const ctx = c.getContext('2d'); ctx.fillStyle = '#efe6cf'; ctx.fillRect(0, 0, size, size);
+    for (let i = 0; i < 4000; i++) { ctx.fillStyle = `rgba(${150+Math.random()*60|0},${130+Math.random()*50|0},${95+Math.random()*40|0},0.05)`; ctx.fillRect(Math.random()*size, Math.random()*size, 1.5, 1.5); }
+    const g = ctx.createRadialGradient(size/2, size/2, size*0.3, size/2, size/2, size*0.72);
+    g.addColorStop(0, 'rgba(120,90,50,0)'); g.addColorStop(1, 'rgba(90,60,30,0.35)'); ctx.fillStyle = g; ctx.fillRect(0, 0, size, size);
     return canvasTexture(c, THREE.SRGBColorSpace, 1);
   }
-
   function makeTitleMaterial(paperTex) {
-    const size = 1024;
-    const c = document.createElement('canvas'); c.width = c.height = size;
-    const ctx = c.getContext('2d');
-    ctx.clearRect(0, 0, size, size);
-    ctx.fillStyle = '#e8c878';
-    ctx.shadowColor = '#ffe8b0'; ctx.shadowBlur = 24;
-    ctx.textAlign = 'center';
-    ctx.font = 'bold 70px Georgia';
-    ctx.fillText('The', size / 2, size * 0.30);
-    ctx.font = 'bold 96px Georgia';
-    ctx.fillText('Enchanted', size / 2, size * 0.42);
-    ctx.fillText('Tome', size / 2, size * 0.54);
-    // a divider flourish
-    ctx.shadowBlur = 14;
-    ctx.fillRect(size * 0.3, size * 0.60, size * 0.4, 3);
-    ctx.font = 'italic 34px Georgia';
-    ctx.fillText('· chapter one ·', size / 2, size * 0.70);
-    const emissive = canvasTexture(c, THREE.SRGBColorSpace, 1);
-
-    return new THREE.MeshStandardMaterial({
-      map: paperTex,
-      emissive: 0xffffff,
-      emissiveMap: emissive,
-      emissiveIntensity: 0.0,        // animated up during the intro
-      roughness: 0.95, metalness: 0.0,
-      side: THREE.DoubleSide,
-    });
+    const size = 1024, c = document.createElement('canvas'); c.width = c.height = size;
+    const ctx = c.getContext('2d'); ctx.clearRect(0, 0, size, size);
+    ctx.fillStyle = '#e8c878'; ctx.shadowColor = '#ffe8b0'; ctx.shadowBlur = 24; ctx.textAlign = 'center';
+    ctx.font = 'bold 70px Georgia'; ctx.fillText('The', size/2, size*0.30);
+    ctx.font = 'bold 96px Georgia'; ctx.fillText('Enchanted', size/2, size*0.42); ctx.fillText('Tome', size/2, size*0.54);
+    ctx.shadowBlur = 14; ctx.fillRect(size*0.3, size*0.60, size*0.4, 3);
+    ctx.font = 'italic 34px Georgia'; ctx.fillText('· chapter one ·', size/2, size*0.70);
+    return new THREE.MeshStandardMaterial({ map: paperTex, emissive: 0xffffff, emissiveMap: canvasTexture(c, THREE.SRGBColorSpace, 1), emissiveIntensity: 0.0, roughness: 0.95, side: THREE.DoubleSide });
   }
-
   function makeCoverEmblemMaterial() {
-    const size = 1024;
-    const c = document.createElement('canvas'); c.width = c.height = size;
-    const ctx = c.getContext('2d');
-    ctx.clearRect(0, 0, size, size);
-    ctx.strokeStyle = '#caa75e'; ctx.fillStyle = '#caa75e';
-    ctx.lineWidth = 6;
-    ctx.strokeRect(size * 0.1, size * 0.1, size * 0.8, size * 0.8);
-    ctx.lineWidth = 2;
-    ctx.strokeRect(size * 0.13, size * 0.13, size * 0.74, size * 0.74);
-    // a simple sun/star sigil
-    ctx.save();
-    ctx.translate(size / 2, size * 0.42);
-    ctx.beginPath();
-    for (let i = 0; i < 16; i++) {
-      const a = (i / 16) * Math.PI * 2;
-      const rr = i % 2 ? 60 : 120;
-      ctx[i ? 'lineTo' : 'moveTo'](Math.cos(a) * rr, Math.sin(a) * rr);
-    }
-    ctx.closePath(); ctx.fill();
-    ctx.restore();
-    ctx.textAlign = 'center';
-    ctx.font = 'bold 64px Georgia';
-    ctx.fillText('THE ENCHANTED TOME', size / 2, size * 0.78);
+    const size = 1024, c = document.createElement('canvas'); c.width = c.height = size;
+    const ctx = c.getContext('2d'); ctx.clearRect(0, 0, size, size); ctx.strokeStyle = '#caa75e'; ctx.fillStyle = '#caa75e';
+    ctx.lineWidth = 6; ctx.strokeRect(size*0.1, size*0.1, size*0.8, size*0.8);
+    ctx.lineWidth = 2; ctx.strokeRect(size*0.13, size*0.13, size*0.74, size*0.74);
+    ctx.save(); ctx.translate(size/2, size*0.42); ctx.beginPath();
+    for (let i = 0; i < 16; i++) { const a = (i/16)*Math.PI*2, rr = i%2?60:120; ctx[i?'lineTo':'moveTo'](Math.cos(a)*rr, Math.sin(a)*rr); }
+    ctx.closePath(); ctx.fill(); ctx.restore();
+    ctx.textAlign = 'center'; ctx.font = 'bold 64px Georgia'; ctx.fillText('THE ENCHANTED TOME', size/2, size*0.78);
     const tex = canvasTexture(c, THREE.SRGBColorSpace, 1);
-
-    return new THREE.MeshStandardMaterial({
-      transparent: true, map: tex,
-      emissive: 0xffcf7a, emissiveMap: tex, emissiveIntensity: 0.6,
-      roughness: 0.4, metalness: 0.8,
-    });
+    return new THREE.MeshStandardMaterial({ transparent: true, map: tex, emissive: 0xffcf7a, emissiveMap: tex, emissiveIntensity: 0.6, roughness: 0.4, metalness: 0.8 });
   }
-
-  // ---- noise helpers ----
-  function hash2(x, y) {
-    const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
-    return n - Math.floor(n);
-  }
-  function vnoise(x, y) {
-    const xi = Math.floor(x), yi = Math.floor(y);
-    const xf = x - xi, yf = y - yi;
-    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
-    const a = hash2(xi, yi), b = hash2(xi + 1, yi);
-    const c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
-    return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
-  }
-  function fbm(x, y, oct = 4) {
-    let s = 0, amp = 0.5, f = 1;
-    for (let i = 0; i < oct; i++) { s += amp * vnoise(x * f, y * f); f *= 2; amp *= 0.5; }
-    return s;
-  }
+  function hash2(x, y) { const n = Math.sin(x*127.1 + y*311.7)*43758.5453; return n - Math.floor(n); }
+  function vnoise(x, y) { const xi=Math.floor(x), yi=Math.floor(y), xf=x-xi, yf=y-yi, u=xf*xf*(3-2*xf), v=yf*yf*(3-2*yf);
+    const a=hash2(xi,yi), b=hash2(xi+1,yi), c=hash2(xi,yi+1), d=hash2(xi+1,yi+1);
+    return a*(1-u)*(1-v)+b*u*(1-v)+c*(1-u)*v+d*u*v; }
+  function fbm(x, y, oct = 4) { let s=0, amp=0.5, f=1; for (let i=0;i<oct;i++){ s+=amp*vnoise(x*f,y*f); f*=2; amp*=0.5; } return s; }
   function fbmCanvas(size, fn) {
-    const c = document.createElement('canvas'); c.width = c.height = size;
-    const ctx = c.getContext('2d');
-    const img = ctx.createImageData(size, size);
-    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-      const n = fbm(x / size * 8, y / size * 8, 5);
-      const v = Math.max(0, Math.min(1, fn(n, x / size, y / size))) * 255;
-      const i = (y * size + x) * 4;
-      img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-    return c;
+    const c = document.createElement('canvas'); c.width = c.height = size; const ctx = c.getContext('2d'); const img = ctx.createImageData(size, size);
+    for (let y=0;y<size;y++) for (let x=0;x<size;x++){ const v=Math.max(0,Math.min(1,fn(fbm(x/size*8,y/size*8,5),x/size,y/size)))*255; const i=(y*size+x)*4; img.data[i]=img.data[i+1]=img.data[i+2]=v; img.data[i+3]=255; }
+    ctx.putImageData(img, 0, 0); return c;
   }
   function paintCanvas(size, fn, heightCanvas) {
-    const hctx = heightCanvas.getContext('2d');
-    const hdata = hctx.getImageData(0, 0, size, size).data;
-    const c = document.createElement('canvas'); c.width = c.height = size;
-    const ctx = c.getContext('2d');
-    const img = ctx.createImageData(size, size);
-    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-      const i = (y * size + x) * 4;
-      const h = hdata[i] / 255;
-      const rgb = fn(x / size, y / size, h);
-      img.data[i] = rgb[0] * 255; img.data[i + 1] = rgb[1] * 255; img.data[i + 2] = rgb[2] * 255; img.data[i + 3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-    return c;
+    const hdata = heightCanvas.getContext('2d').getImageData(0, 0, size, size).data;
+    const c = document.createElement('canvas'); c.width = c.height = size; const ctx = c.getContext('2d'); const img = ctx.createImageData(size, size);
+    for (let y=0;y<size;y++) for (let x=0;x<size;x++){ const i=(y*size+x)*4; const rgb=fn(x/size,y/size,hdata[i]/255); img.data[i]=rgb[0]*255; img.data[i+1]=rgb[1]*255; img.data[i+2]=rgb[2]*255; img.data[i+3]=255; }
+    ctx.putImageData(img, 0, 0); return c;
   }
   function normalFromHeight(heightCanvas, strength) {
-    const size = heightCanvas.width;
-    const hctx = heightCanvas.getContext('2d');
-    const h = hctx.getImageData(0, 0, size, size).data;
-    const get = (x, y) => h[((((y + size) % size) * size + ((x + size) % size)) * 4)] / 255;
-    const c = document.createElement('canvas'); c.width = c.height = size;
-    const ctx = c.getContext('2d');
-    const img = ctx.createImageData(size, size);
-    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-      const dx = (get(x - 1, y) - get(x + 1, y)) * strength;
-      const dy = (get(x, y - 1) - get(x, y + 1)) * strength;
-      const nz = 1.0;
-      const len = Math.hypot(dx, dy, nz);
-      const i = (y * size + x) * 4;
-      img.data[i] = (dx / len * 0.5 + 0.5) * 255;
-      img.data[i + 1] = (dy / len * 0.5 + 0.5) * 255;
-      img.data[i + 2] = (nz / len * 0.5 + 0.5) * 255;
-      img.data[i + 3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-    return c;
+    const size = heightCanvas.width; const h = heightCanvas.getContext('2d').getImageData(0, 0, size, size).data;
+    const get = (x, y) => h[(((y+size)%size)*size + ((x+size)%size))*4]/255;
+    const c = document.createElement('canvas'); c.width = c.height = size; const ctx = c.getContext('2d'); const img = ctx.createImageData(size, size);
+    for (let y=0;y<size;y++) for (let x=0;x<size;x++){ const dx=(get(x-1,y)-get(x+1,y))*strength, dy=(get(x,y-1)-get(x,y+1))*strength, nz=1.0, len=Math.hypot(dx,dy,nz), i=(y*size+x)*4;
+      img.data[i]=(dx/len*0.5+0.5)*255; img.data[i+1]=(dy/len*0.5+0.5)*255; img.data[i+2]=(nz/len*0.5+0.5)*255; img.data[i+3]=255; }
+    ctx.putImageData(img, 0, 0); return c;
   }
   function canvasTexture(canvas, colorSpace, repeat = 1) {
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = colorSpace;
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(repeat, repeat);
-    tex.anisotropy = 8;
-    return tex;
-  }
-  function makeGradientBackground() {
-    const c = document.createElement('canvas'); c.width = 16; c.height = 256;
-    const ctx = c.getContext('2d');
-    const g = ctx.createLinearGradient(0, 0, 0, 256);
-    g.addColorStop(0, '#16110b');
-    g.addColorStop(0.5, '#0a0807');
-    g.addColorStop(1, '#040405');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, 16, 256);
-    const tex = new THREE.CanvasTexture(c);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    return tex;
+    const tex = new THREE.CanvasTexture(canvas); tex.colorSpace = colorSpace; tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(repeat, repeat); tex.anisotropy = 8; return tex;
   }
 
-  // -------------------------------------------------------------------
-  //  Loading + error UI
-  // -------------------------------------------------------------------
+  // ============ LOADER / ERROR ============
   function finishLoading(then) {
-    const fill = document.getElementById('barFill');
-    let p = 0;
+    const fill = document.getElementById('barFill'); let p = 0;
     const iv = setInterval(() => {
-      p = Math.min(100, p + 12 + Math.random() * 18);
-      fill.style.width = p + '%';
-      if (p >= 100) {
-        clearInterval(iv);
-        setTimeout(() => {
-          document.getElementById('loader').classList.add('hidden');
-          then();
-        }, 350);
-      }
+      p = Math.min(100, p + 12 + Math.random() * 18); fill.style.width = p + '%';
+      if (p >= 100) { clearInterval(iv); setTimeout(() => { document.getElementById('loader').classList.add('hidden'); then(); }, 350); }
     }, 120);
   }
   function showError(e) {
-    console.error(e);
-    const el = document.getElementById('err');
-    el.style.display = 'flex';
-    el.innerHTML = `<div><p style="color:#e8c878;font-size:20px;margin-bottom:14px;">Could not open the book</p>
-      <p>${(e && e.message) || e}</p>
-      <p style="opacity:.5;margin-top:18px;font-size:13px;">This demo loads three.js & GSAP from a CDN — an internet connection is required.</p></div>`;
+    console.error(e); const el = document.getElementById('err'); el.style.display = 'flex';
+    el.innerHTML = `<div><p style="color:#e8c878;font-size:20px;margin-bottom:14px;">Could not open the book</p><p>${(e && e.message) || e}</p><p style="opacity:.5;margin-top:18px;font-size:13px;">This site loads three.js & GSAP from a CDN — an internet connection is required.</p></div>`;
   }
 
-  // ---- Boot last, so every `let`/`const` above is initialized first ----
+  // ============ BOOT (last, so all declarations are initialized) ============
   try {
     init();
+    setupScroll();
+    buildCards();
     animate();
-  } catch (e) {
-    showError(e);
-  }
+    finishLoading(() => {});
+  } catch (e) { showError(e); }
   </script>
 </body>
 </html>
